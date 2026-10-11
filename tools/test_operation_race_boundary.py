@@ -127,9 +127,9 @@ def worker(config_path: Path) -> int:
             config["app_dsn"], config["witness_url"], config["witness_public_key"]
         )
         dump(ready_path, {"pid": os.getpid(), "contract_id": contract_id, "ready": True})
-        deadline = time.monotonic() + 15
+        deadline = time.monotonic() + 30
         while not start_path.exists() and time.monotonic() < deadline:
-            time.sleep(0.01)
+            time.sleep(0.005)
         if not start_path.exists():
             raise RuntimeError("race start barrier timeout")
         try:
@@ -177,7 +177,14 @@ def consumed_error(result: dict) -> bool:
     return isinstance(error, dict) and error.get("type") == "NARFError" and "already consumed" in error.get("message", "")
 
 
-def run(output: Path, app_dsn: str, admin_dsn: str, witness_url: str, witness_public_key: str) -> dict:
+def run(
+    output: Path,
+    app_dsn: str,
+    admin_dsn: str,
+    witness_url: str,
+    witness_public_key: str,
+    worker_count: int,
+) -> dict:
     before = subprocess.check_output(
         ["git", "status", "--porcelain", "--untracked-files=all"], cwd=ROOT, text=True
     )
@@ -190,7 +197,7 @@ def run(output: Path, app_dsn: str, admin_dsn: str, witness_url: str, witness_pu
         start_path = root / "START"
         configs = []
         processes = []
-        for index in range(2):
+        for index in range(worker_count):
             config = {
                 "host_root": str(root / f"host-{index}"),
                 "operation_id": operation_id,
@@ -215,18 +222,18 @@ def run(output: Path, app_dsn: str, admin_dsn: str, witness_url: str, witness_pu
                 )
             )
 
-        deadline = time.monotonic() + 15
+        deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             if all(Path(config["ready_path"]).exists() for config in configs):
                 break
             if any(process.poll() is not None for process in processes):
                 break
-            time.sleep(0.02)
+            time.sleep(0.01)
         ready = all(Path(config["ready_path"]).exists() for config in configs)
         start_path.write_text("go\n")
         for process in processes:
             try:
-                process.wait(timeout=15)
+                process.wait(timeout=30)
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
@@ -234,7 +241,11 @@ def run(output: Path, app_dsn: str, admin_dsn: str, witness_url: str, witness_pu
         results = []
         for config in configs:
             path = Path(config["result_path"])
-            results.append(json.loads(path.read_text()) if path.exists() else {"error": {"type": "MissingResult", "message": "worker result missing"}})
+            results.append(
+                json.loads(path.read_text())
+                if path.exists()
+                else {"error": {"type": "MissingResult", "message": "worker result missing"}}
+            )
 
         successful = [result for result in results if result.get("returned") == "published" and result.get("error") is None]
         blocked = [result for result in results if consumed_error(result)]
@@ -244,15 +255,16 @@ def run(output: Path, app_dsn: str, admin_dsn: str, witness_url: str, witness_pu
         race_pass = (
             ready
             and len(successful) == 1
-            and len(blocked) == 1
-            and len(contract_ids) == 2
+            and len(blocked) == worker_count - 1
+            and len(contract_ids) == worker_count
             and event_count(events) == 1
             and ledger_count(admin_dsn) == 1
             and witness_reserved
         )
         race_row = {
-            "case": "two-host-processes-same-operation-race",
+            "case": "high-fanout-host-processes-same-operation-race",
             "result": "PASS" if race_pass else "FAIL",
+            "planned_workers": worker_count,
             "workers_ready": ready,
             "distinct_contracts": len(contract_ids),
             "successful_workers": len(successful),
@@ -264,7 +276,7 @@ def run(output: Path, app_dsn: str, admin_dsn: str, witness_url: str, witness_pu
         }
         dump(output / "race.json", race_row)
 
-        for index in range(2):
+        for index in range(worker_count):
             shutil.rmtree(root / f"host-{index}", ignore_errors=True)
         admin_execute(admin_dsn, f"TRUNCATE TABLE {TABLE}")
 
@@ -300,15 +312,17 @@ def run(output: Path, app_dsn: str, admin_dsn: str, witness_url: str, witness_pu
     counts = {"PASS": sum(row["result"] == "PASS" for row in rows), "FAIL": sum(row["result"] == "FAIL" for row in rows)}
     summary = {
         "planned_cases": 2,
+        "worker_count": worker_count,
         "counts": counts,
         "source_unchanged": before == after,
         "result": "BOUNDARY_CONFIRMED" if counts == {"PASS": 2, "FAIL": 0} and before == after else "FAIL",
         "operation_id": operation_id,
-        "claim": "Two fresh contracts in two host processes sharing one authenticated operation UUID produce at most one callback through SignedWitness+PostgreSQL, and resetting all local host history plus PostgreSQL does not re-enable that operation while signed witness history is preserved.",
+        "claim": f"{worker_count} fresh contracts in {worker_count} synchronized host processes sharing one authenticated operation UUID produce exactly one callback through SignedWitness+PostgreSQL; resetting all local host history plus PostgreSQL does not re-enable that operation while signed witness history is preserved.",
         "limits": [
             "The trusted host still defines semantic operation identity.",
             "The witness and PostgreSQL services run on one CI runner and do not prove independent production administration.",
             "Rollback of witness history together with PostgreSQL and all other preserving authority histories remains outside this protected boundary and is tested separately as LIMITATION_CONFIRMED.",
+            "This measured high-fanout race does not prove behavior for unbounded process counts or arbitrary distributed network partitions.",
         ],
         "cases": rows,
     }
@@ -325,6 +339,7 @@ def main() -> int:
     parser.add_argument("--admin-dsn")
     parser.add_argument("--witness-url")
     parser.add_argument("--witness-public-key")
+    parser.add_argument("--workers", type=int, default=16)
     args = parser.parse_args()
     if args.worker is not None:
         return worker(args.worker)
@@ -333,8 +348,17 @@ def main() -> int:
         parser.error("controller mode requires output, DSNs and witness connection")
     if not args.output.is_absolute() or args.output.resolve().is_relative_to(ROOT):
         parser.error("--output must be absolute and outside the repository")
+    if args.workers < 2 or args.workers > 64:
+        parser.error("--workers must be between 2 and 64")
     args.output.mkdir(parents=True, exist_ok=False, mode=0o700)
-    summary = run(args.output, args.app_dsn, args.admin_dsn, args.witness_url, args.witness_public_key)
+    summary = run(
+        args.output,
+        args.app_dsn,
+        args.admin_dsn,
+        args.witness_url,
+        args.witness_public_key,
+        args.workers,
+    )
     return 0 if summary["result"] == "BOUNDARY_CONFIRMED" else 1
 
 
