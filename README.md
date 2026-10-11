@@ -35,6 +35,7 @@ If any required condition is missing or invalid, NARF must not manufacture PASS.
 - `NARF-SPEC.md` — behavioral specification.
 - `INDEPENDENCE.md` — standalone/dependency boundary.
 - `ARCHITECTURE.md` — reference architecture and trust boundary.
+- `HOST-CONTRACT.md` — host locking, immutable effect input, receipt-history protection and persistence obligations.
 - `src/narf/gate.py` — Python reference implementation.
 - `tests/test_gate.py` — positive and adversarial fail-closed tests.
 - `LICENSE` — Apache License, Version 2.0.
@@ -63,6 +64,8 @@ The integrating trusted host owns:
 - the gated effect callback.
 
 Candidate code and implementation workers must not receive those authorities. There is intentionally no evidence-submission or PASS-override API for candidate code.
+
+An integrating host must serialize relevant state/revocation changes with the complete gated effect and preserve receipt history. See [the trusted-host integration contract](HOST-CONTRACT.md) for the tested locking pattern and its limits.
 
 ## Integration
 
