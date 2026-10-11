@@ -1,5 +1,25 @@
 # NARF
 
+## In plain English
+
+AI systems can write code and take actions quickly, but **“looks good” is not the same as “proved safe to run.”** NARF is a small safety gate between AI-assisted work and the action that work is allowed to trigger.
+
+Before an action is allowed, NARF asks a few simple questions:
+
+- Are we still approving the exact same task and result that were checked?
+- Did every required check actually run and pass?
+- Is the evidence authentic and complete?
+- Has anything important changed since approval?
+- Has the action already been used, revoked or blocked?
+
+If the answer to any required question is missing, uncertain or invalid, NARF does **not** invent a PASS.
+
+Think of it as a checkpoint for AI-assisted automation: **evidence first, action second**.
+
+NARF does not make an AI correct, sandbox an entire system or certify a production deployment. It provides a reference implementation for enforcing one narrower rule: an automated action should happen only when the required evidence still supports that exact action at the moment it is executed.
+
+## Technical summary
+
 NARF is a standalone fail-closed acceptance gate for AI-assisted and automated work.
 
 It has no required parent framework, workspace variable, private repository, external governance system, or project harness. The reference implementation uses only the Python standard library.
