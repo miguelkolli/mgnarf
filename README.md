@@ -1,17 +1,19 @@
 # NARF
 
-NARF is a fail-closed acceptance gate for AI-assisted and automated work.
+NARF is a standalone fail-closed acceptance gate for AI-assisted and automated work.
 
-The core rule is simple:
+It has no required parent framework, workspace variable, private repository, external governance system, or project harness. The reference implementation uses only the Python standard library.
+
+## Core rule
 
 ```text
 PASS only when the exact frozen task/candidate has complete authenticated
 verifier evidence, every required verifier passes, relevant state is unchanged,
-no inhibitor/revocation exists, and the state is revalidated immediately before
+no inhibitor or revocation exists, and state is revalidated immediately before
 the gated effect.
 ```
 
-A useful shorthand is:
+Equivalently:
 
 ```text
 PASS = frozen bindings
@@ -28,55 +30,45 @@ PASS = frozen bindings
 
 If any required condition is missing or invalid, NARF must not manufacture PASS.
 
-## What is here
+## Repository
 
-- `NARF-SPEC.md` — standalone behavioral contract.
-- `src/narf/gate.py` — standard-library reference implementation.
-- `tests/test_gate.py` — positive and adversarial/fail-closed tests.
-- MGSystem repository governance files used while this project is developed.
+- `NARF-SPEC.md` — behavioral specification.
+- `INDEPENDENCE.md` — standalone/dependency boundary.
+- `ARCHITECTURE.md` — reference architecture and trust boundary.
+- `src/narf/gate.py` — Python reference implementation.
+- `tests/test_gate.py` — positive and adversarial fail-closed tests.
 
-## Trust model
+## Run the tests
 
-NARF assumes a trusted host owns:
-
-- the HMAC receipt key;
-- the frozen task/state/requirement bindings;
-- verifier selection and execution;
-- revocation and current-state probes;
-- the privileged/gated effect callback.
-
-Candidate code and implementation workers must not receive those authorities.
-There is intentionally no `submit_evidence()` or PASS-override API.
-
-## Run the reference tests
+Python 3 is the only runtime requirement for the reference implementation.
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 python3 -m compileall -q src tests
 ```
 
-## Provenance
+No external harness is required for these commands.
 
-The standalone model was extracted from the NARF v3 semantics in the private
-MGSystem runtime at source commit
-`817e694fedbae8dc749fbbfcf271cf1fa93f1881`.
+## Trust model
 
-It is not a byte-for-byte copy: MGSystem-specific Task Freeze, lifecycle,
-analytics, deployment, host paths, and private runtime dependencies are excluded.
-The standalone boundary keeps the fail-closed acceptance and pre-effect
-revalidation model while making host integration explicit through callbacks and
-digests.
+The integrating trusted host owns:
+
+- the HMAC receipt key;
+- frozen task/state/requirement bindings;
+- verifier selection and execution;
+- revocation and current-state probes;
+- the gated effect callback.
+
+Candidate code and implementation workers must not receive those authorities. There is intentionally no evidence-submission or PASS-override API for candidate code.
+
+## Integration
+
+Other systems may integrate NARF. That dependency is one-way: an integration may depend on NARF, but NARF does not depend on the integrating system.
 
 ## Status
 
-This repository is still in foundation/reference-implementation stage. Local
-standalone tests may verify the code in a working checkout, but that is not the
-same claim as MGSystem shared-harness, deployment, production, or external
-end-to-end NARF verification.
-
-No public release or production-readiness claim is made yet.
+This repository contains a reference implementation and adversarial unit tests. A standalone unit-test result is not, by itself, a production-readiness or external end-to-end certification claim.
 
 ## License
 
-No license has been selected yet. Do not treat repository visibility as a grant
-of reuse rights until a license is explicitly added.
+No license has been selected yet. Repository visibility does not grant reuse rights until a license is explicitly added.
