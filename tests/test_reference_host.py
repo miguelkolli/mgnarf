@@ -24,9 +24,9 @@ class ReferenceHostIntegrationTests(unittest.TestCase):
             out.append(VerifierBinding(requirement.verifier_id, requirement.verifier_version, produce))
         return tuple(out)
 
-    def prepare(self, payload=b"approved payload", statuses=("PASS", "PASS")):
+    def prepare(self, payload=b"approved payload", statuses=("PASS", "PASS"), task=None):
         self.host.prepare(
-            {"description": "publish approved payload", "project": "reference-host"},
+            task if task is not None else {"description": "publish approved payload", "project": "reference-host"},
             task_id="reference-host",
             candidate=b"candidate-v1",
             policy=b"policy-v1",
@@ -68,6 +68,21 @@ class ReferenceHostIntegrationTests(unittest.TestCase):
         with self.assertRaises(NARFError):
             self.host.commit()
         self.assertFalse(self.host.target.exists())
+
+    def test_integer_key_task_is_rejected_before_freeze(self):
+        with self.assertRaisesRegex(NARFError, "canonical JSON required"):
+            self.prepare(task={1: "alpha"})
+
+    def test_tuple_task_value_is_rejected_before_freeze(self):
+        with self.assertRaisesRegex(NARFError, "canonical JSON required"):
+            self.prepare(task={"items": (1, 2)})
+
+    def test_valid_strict_task_still_reaches_effect(self):
+        task = {"items": [1, 2], "nested": {"enabled": True, "value": None}}
+        self.prepare(task=task)
+        self.assertEqual(self.host.verify()["result"], "PASS")
+        target = Path(self.host.commit())
+        self.assertEqual(target.read_bytes(), b"approved payload")
 
 
 if __name__ == "__main__":
