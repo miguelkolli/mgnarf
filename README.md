@@ -37,6 +37,9 @@ If any required condition is missing or invalid, NARF must not manufacture PASS.
 - `ARCHITECTURE.md` — reference architecture and trust boundary.
 - `src/narf/gate.py` — Python reference implementation.
 - `tests/test_gate.py` — positive and adversarial fail-closed tests.
+- `LICENSE` — Apache License, Version 2.0.
+- `NOTICE` — required project attribution notice.
+- `TRADEMARKS.md` — project name and branding policy.
 
 ## Run the tests
 
@@ -69,6 +72,14 @@ Other systems may integrate NARF. That dependency is one-way: an integration may
 
 This repository contains a reference implementation and adversarial unit tests. A standalone unit-test result is not, by itself, a production-readiness or external end-to-end certification claim.
 
-## License
+## License and attribution
 
-No license has been selected yet. Repository visibility does not grant reuse rights until a license is explicitly added.
+The source code is licensed under the Apache License, Version 2.0. See `LICENSE`.
+
+Redistributions and derivative works must preserve the applicable attribution from `NOTICE` as required by Apache-2.0. The project attribution is:
+
+```text
+This software includes software originally developed as MGNARF Ändi.
+```
+
+The Apache license does not grant permission to present a modified version as the official NARF, MGNARF, or MGNARF Ändi project. See `TRADEMARKS.md` for the project name and branding policy.
