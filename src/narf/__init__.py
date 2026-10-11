@@ -12,9 +12,16 @@ from .gate import (
     canonical_json_digest,
     sha256_bytes,
 )
-from .rollback_guard import FileConsumptionAuthority, RollbackProtectedEffectExecutor
+from .rollback_guard import (
+    AllOfConsumptionAuthority,
+    ConsumptionAuthority,
+    FileConsumptionAuthority,
+    RollbackProtectedEffectExecutor,
+)
 
 __all__ = [
+    "AllOfConsumptionAuthority",
+    "ConsumptionAuthority",
     "EffectBinding",
     "FileConsumptionAuthority",
     "FrozenState",
