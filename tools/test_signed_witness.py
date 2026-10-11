@@ -257,21 +257,42 @@ class FakeSession:
 
 def run_db_admin_reset_witness_preserved(output: Path, app_dsn: str, admin_dsn: str):
     reset_ledger(admin_dsn)
-    with tempfile.TemporaryDirectory(prefix="narf-signed-witness-") as name:
+    with tempfile.TemporaryDirectory(prefix="narf-signed-witness-race-") as name:
         root = Path(name)
         witness = WitnessProcess(root / "witness").start()
         try:
-            fixture = make_fixture(str(root / "fixture"), app_dsn, witness)
-            session, first_decision = open_pass_session(fixture)
-            snapshot = root / "pre-consumption-local"
-            shutil.copytree(fixture["rollback_domain"], snapshot)
-            first_effect = fixture["executor"].execute(fixture["contract_id"], session)
-            restore_local_history(fixture, snapshot)
-            admin_execute(admin_dsn, f"TRUNCATE TABLE {TABLE}")
-            replay, replay_decision = fresh_replay(fixture)
-            witness_reserved = fixture["signed"].is_reserved(fixture["contract_id"])
-            passed = first_decision["result"] == "PASS" and first_effect == "published" and replay_decision["result"] == "PASS" and expected_consumed(replay) and event_count(fixture["events"]) == 1 and ledger_count(admin_dsn) == 0 and witness_reserved
-            row = {"case": "database-and-local-history-reset-witness-preserved", "result": "PASS" if passed else "FAIL", "replay": replay, "events_after_replay": event_count(fixture["events"]), "postgres_rows_after_replay": ledger_count(admin_dsn), "witness_reserved": witness_reserved}
+            race_output = output / "operation-race-boundary"
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "tools" / "test_operation_race_boundary.py"),
+                    "--output", str(race_output),
+                    "--app-dsn", app_dsn,
+                    "--admin-dsn", admin_dsn,
+                    "--witness-url", witness.base_url,
+                    "--witness-public-key", witness.public_key_base64,
+                ],
+                cwd=ROOT,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=45,
+            )
+            summary_path = race_output / "summary.json"
+            race_summary = json.loads(summary_path.read_text()) if summary_path.exists() else None
+            passed = (
+                completed.returncode == 0
+                and isinstance(race_summary, dict)
+                and race_summary.get("result") == "BOUNDARY_CONFIRMED"
+                and race_summary.get("counts") == {"PASS": 2, "FAIL": 0}
+                and race_summary.get("source_unchanged") is True
+            )
+            row = {
+                "case": "operation-race-and-db-local-reset-witness-preserved",
+                "result": "PASS" if passed else "FAIL",
+                "operation_race": race_summary,
+                "harness_exit_code": completed.returncode,
+            }
         finally:
             witness.stop()
     dump(output / "witness-preserved.json", row)
@@ -412,11 +433,12 @@ def main():
         "counts": counts,
         "source_unchanged": unchanged,
         "result": "BOUNDARY_CONFIRMED" if counts == {"PASS": 4, "LIMITATION_CONFIRMED": 1, "FAIL": 0} and unchanged else "FAIL",
-        "claim": "Resetting the local NARF history and PostgreSQL ledger does not re-enable the same authorization while the independently signed witness retains its consumed-token history.",
+        "claim": "Two fresh contracts in separate host processes sharing one authenticated operation UUID produce at most one callback, and resetting all local host history plus PostgreSQL does not re-enable that operation while the independently signed witness retains its consumed-token history.",
         "limits": [
             "The CI witness is a separate process/storage fixture on one runner; it does not prove independent production administration.",
             "Ed25519 authenticates witness responses and request nonces prevent replay of an older signed success response; signatures do not make witness storage monotonic.",
             "If privileged operators can roll back the witness ledger together with every other authority history, replay can return; that case is intentionally LIMITATION_CONFIRMED.",
+            "The trusted host still defines semantic operation identity; deliberate renumbering remains a separate documented limitation.",
             "Exactly-once remote effect completion and physical-power-loss guarantees remain outside this boundary.",
         ],
     }
