@@ -4,22 +4,23 @@ NARF is a standalone fail-closed acceptance gate for AI-assisted and automated w
 
 It has no required parent framework, workspace variable, private repository, external governance system, or project harness. The reference implementation uses only the Python standard library.
 
-## Status: alpha reference implementation
+## Status: beta reference implementation
 
-NARF is available for review, experimentation and host-integration development.
-The current development status is **alpha**. This status does not imply that
-a versioned release has been published.
+NARF is available for review, host-integration development and pre-production evaluation.
+The current development status is **beta**. Beta means the standalone reference implementation has repeatable recorded verification for its documented scope; it does **not** certify an integrating production host or external effect system.
 
 The recorded standalone reference checks pass. Production-host integration,
-deployment sandboxing, rollback resistance and physical power-loss safety
-remain **UNVERIFIED**.
+deployment sandboxing, rollback-resistant history, physical power-loss safety
+and durable remote acknowledgement remain **UNVERIFIED**.
 
-### Recorded verification
+The alpha-to-beta promotion rules are defined in [BETA-ACCEPTANCE.md](BETA-ACCEPTANCE.md). A beta tag may be published only from an exact main-branch commit whose required reference checks have completed successfully.
 
-The following results were observed in
-[GitHub Actions run 38115420983](https://github.com/miguelkolli/mgnarf/actions/runs/38115420983)
-on 2026-10-11, for exact commit
-[`51182b678ae0b7da2aa1197468cb3e8f74c3ca6d`](https://github.com/miguelkolli/mgnarf/commit/51182b678ae0b7da2aa1197468cb3e8f74c3ca6d).
+### Recorded verification baseline
+
+The pre-promotion baseline was observed in
+[GitHub Actions run 38117123064](https://github.com/miguelkolli/mgnarf/actions/runs/38117123064)
+on 2026-10-11, for exact main commit
+[`478c3958beaf699c2db34d255fde764f4f38f596`](https://github.com/miguelkolli/mgnarf/commit/478c3958beaf699c2db34d255fde764f4f38f596).
 
 | Check | Observed result |
 | --- | --- |
@@ -33,11 +34,9 @@ UID/GID. They test OS denial of key/receipt tampering, positive access controls,
 unchanged host state and rejection of replay. They are separate from the
 34 unittest methods.
 
-These are results for the recorded revision. Check the
+The baseline above is not a substitute for beta-candidate CI. Check the
 [latest workflow runs](https://github.com/miguelkolli/mgnarf/actions/workflows/reference-tests.yml)
-for later revisions, and see [TEST-REPORT.md](TEST-REPORT.md) for the detailed
-evidence, earlier supplemental runs, audit findings and limitations. Earlier
-parameterized repetitions are not counted as additional current CI tests.
+and see [BETA-ACCEPTANCE.md](BETA-ACCEPTANCE.md) and [TEST-REPORT.md](TEST-REPORT.md) for promotion requirements, detailed evidence, earlier supplemental runs, audit findings and limitations. Earlier parameterized repetitions are not counted as additional current CI tests.
 
 ## Core rule
 
@@ -76,13 +75,15 @@ If any required condition is missing or invalid, NARF must not manufacture PASS.
 - [tools/test_unix_isolation.py](tools/test_unix_isolation.py) — distinct-UID/GID isolation harness.
 - [CODEX-UNIX-TESTS.md](CODEX-UNIX-TESTS.md) — local Unix harness instructions and required privileges.
 - [TEST-REPORT.md](TEST-REPORT.md) — recorded verification and evidence limits.
-- [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md) — reference-alpha release conditions.
+- [BETA-ACCEPTANCE.md](BETA-ACCEPTANCE.md) — alpha-to-beta promotion gate and release conditions.
+- [RELEASE-v1.60-beta.1.md](RELEASE-v1.60-beta.1.md) — prepared beta pre-release notes.
+- [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md) — historical reference-alpha release checklist.
 - [LICENSE](LICENSE), [NOTICE](NOTICE) and [TRADEMARKS.md](TRADEMARKS.md) — license, attribution and branding.
 
 ## Run the tests
 
 The reference implementation uses Python's standard library. The recorded CI
-run used Python 3.12.3 on Linux. Run these commands from the repository root:
+baseline used Python 3.12.3 on Linux. Run these commands from the repository root:
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v
