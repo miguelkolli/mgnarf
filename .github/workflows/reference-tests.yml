@@ -162,3 +162,45 @@ jobs:
           path: ${{ env.CI_EVIDENCE }}
           if-no-files-found: error
           retention-days: 30
+
+  crash-persistence:
+    name: Crash persistence / at-most-once boundary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      CI_EVIDENCE: /tmp/narf-crash-boundary-evidence
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run abrupt-process-exit persistence fixture
+        shell: bash
+        run: |
+          mkdir -p "$CI_EVIDENCE"
+          git rev-parse HEAD > "$CI_EVIDENCE/commit.txt"
+          python3 --version > "$CI_EVIDENCE/python.txt"
+          uname -a > "$CI_EVIDENCE/kernel.txt"
+          python3 tools/test_crash_boundary.py --output "$CI_EVIDENCE/results" \
+            2>&1 | tee "$CI_EVIDENCE/harness.log"
+      - name: Require both crash windows to preserve at-most-once invocation
+        run: |
+          python3 - "$CI_EVIDENCE/results/summary.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          summary = json.loads(Path(sys.argv[1]).read_text())
+          assert summary["result"] == "PASS", summary
+          assert summary["planned_cases"] == 2, summary
+          assert summary["counts"] == {"PASS": 2, "FAIL": 0}, summary
+          assert summary["source_unchanged"], summary
+          print(json.dumps(summary, indent=2))
+          PY
+      - name: Preserve crash-boundary evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: narf-crash-boundary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.CI_EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 30
