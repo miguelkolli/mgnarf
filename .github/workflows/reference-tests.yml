@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  reference:
-    name: Reference tests (no skips)
+  core-reference:
+    name: Core reference tests (no skips)
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -204,3 +204,203 @@ jobs:
           path: ${{ env.CI_EVIDENCE }}
           if-no-files-found: error
           retention-days: 30
+
+  rollback-witness:
+    name: Rollback restoration witness (expects LIMITATION_CONFIRMED)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      CI_EVIDENCE: /tmp/narf-reference-rollback-witness-evidence
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Reproduce filesystem rollback limitation
+        run: |
+          mkdir -p "$CI_EVIDENCE"
+          python3 tools/test_rollback_boundary.py --output "$CI_EVIDENCE/results" \
+            2>&1 | tee "$CI_EVIDENCE/harness.log"
+      - name: Require documented limitation to be reproduced exactly
+        run: |
+          python3 - "$CI_EVIDENCE/results/summary.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          summary = json.loads(Path(sys.argv[1]).read_text())
+          assert summary["result"] == "LIMITATION_CONFIRMED", summary
+          assert summary["planned_cases"] == 2, summary
+          assert summary["counts"] == {"LIMITATION_CONFIRMED": 2, "UNEXPECTED": 0}, summary
+          assert summary["source_unchanged"], summary
+          print(json.dumps(summary, indent=2))
+          PY
+
+  rollback-hardening:
+    name: Rollback-protected consumption authority (2 cases)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      CI_EVIDENCE: /tmp/narf-reference-rollback-hardening-evidence
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run rollback hardening fixture
+        run: |
+          mkdir -p "$CI_EVIDENCE"
+          python3 tools/test_rollback_hardening.py --output "$CI_EVIDENCE/results" \
+            2>&1 | tee "$CI_EVIDENCE/harness.log"
+      - name: Require both rollback replays to be blocked
+        run: |
+          python3 - "$CI_EVIDENCE/results/summary.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          summary = json.loads(Path(sys.argv[1]).read_text())
+          assert summary["result"] == "PASS", summary
+          assert summary["planned_cases"] == 2, summary
+          assert summary["counts"] == {"PASS": 2, "FAIL": 0}, summary
+          assert summary["source_unchanged"], summary
+          print(json.dumps(summary, indent=2))
+          PY
+
+  multidomain-fencing:
+    name: Multi-domain fencing (3 protected + 1 limitation)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      CI_EVIDENCE: /tmp/narf-reference-multidomain-evidence
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run multi-domain rollback and deletion fault injection
+        run: |
+          mkdir -p "$CI_EVIDENCE"
+          python3 tools/test_multidomain_fencing.py --output "$CI_EVIDENCE/results" \
+            2>&1 | tee "$CI_EVIDENCE/harness.log"
+      - name: Require exact protected and limitation boundary
+        run: |
+          python3 - "$CI_EVIDENCE/results/summary.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          summary = json.loads(Path(sys.argv[1]).read_text())
+          assert summary["result"] == "BOUNDARY_CONFIRMED", summary
+          assert summary["planned_cases"] == 4, summary
+          assert summary["counts"] == {"PASS": 3, "LIMITATION_CONFIRMED": 1, "FAIL": 0}, summary
+          assert summary["source_unchanged"], summary
+          print(json.dumps(summary, indent=2))
+          PY
+
+  postgres-authority:
+    name: PostgreSQL fencing service (4 protected + 1 limitation)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      CI_EVIDENCE: /tmp/narf-reference-postgres-evidence
+      NARF_POSTGRES_ADMIN_DSN: postgresql://narf_admin:narf-admin-ci@127.0.0.1:5432/narf
+      NARF_POSTGRES_APP_DSN: postgresql://narf_app:narf-app-ci@127.0.0.1:5432/narf
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_USER: narf_admin
+          POSTGRES_PASSWORD: narf-admin-ci
+          POSTGRES_DB: narf
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U narf_admin -d narf"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install PostgreSQL client driver
+        run: python3 -m pip install --disable-pip-version-check --no-input "psycopg[binary]>=3.2,<4"
+      - name: Bootstrap least-privilege ledger
+        run: |
+          mkdir -p "$CI_EVIDENCE"
+          python3 - <<'PY'
+          import os, psycopg
+          with psycopg.connect(os.environ["NARF_POSTGRES_ADMIN_DSN"], autocommit=True) as connection:
+              with connection.cursor() as cursor:
+                  cursor.execute("CREATE ROLE narf_app LOGIN PASSWORD 'narf-app-ci'")
+                  cursor.execute("""
+                      CREATE TABLE narf_consumption_ledger (
+                          token uuid PRIMARY KEY,
+                          authority_version text NOT NULL,
+                          consumed_at timestamptz NOT NULL DEFAULT clock_timestamp()
+                      )
+                  """)
+                  cursor.execute("REVOKE ALL ON narf_consumption_ledger FROM PUBLIC")
+                  cursor.execute("GRANT SELECT, INSERT ON narf_consumption_ledger TO narf_app")
+          PY
+      - name: Run PostgreSQL authority boundary fixture
+        run: |
+          python3 tools/test_postgres_authority.py \
+            --output "$CI_EVIDENCE/results" \
+            --app-dsn "$NARF_POSTGRES_APP_DSN" \
+            --admin-dsn "$NARF_POSTGRES_ADMIN_DSN" \
+            2>&1 | tee "$CI_EVIDENCE/harness.log"
+      - name: Require exact PostgreSQL boundary
+        run: |
+          python3 - "$CI_EVIDENCE/results/summary.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          summary = json.loads(Path(sys.argv[1]).read_text())
+          assert summary["result"] == "BOUNDARY_CONFIRMED", summary
+          assert summary["planned_cases"] == 5, summary
+          assert summary["counts"] == {"PASS": 4, "LIMITATION_CONFIRMED": 1, "FAIL": 0}, summary
+          assert summary["source_unchanged"], summary
+          print(json.dumps(summary, indent=2))
+          PY
+
+  reference:
+    name: Reference tests (no skips)
+    needs:
+      - core-reference
+      - unix
+      - process-boundary
+      - crash-persistence
+      - rollback-witness
+      - rollback-hardening
+      - multidomain-fencing
+      - postgres-authority
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require every merge boundary to succeed
+        env:
+          CORE_REFERENCE: ${{ needs.core-reference.result }}
+          UNIX_ISOLATION: ${{ needs.unix.result }}
+          PROCESS_BOUNDARY: ${{ needs.process-boundary.result }}
+          CRASH_PERSISTENCE: ${{ needs.crash-persistence.result }}
+          ROLLBACK_WITNESS: ${{ needs.rollback-witness.result }}
+          ROLLBACK_HARDENING: ${{ needs.rollback-hardening.result }}
+          MULTIDOMAIN_FENCING: ${{ needs.multidomain-fencing.result }}
+          POSTGRES_AUTHORITY: ${{ needs.postgres-authority.result }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          results = {
+              "core_reference": os.environ["CORE_REFERENCE"],
+              "unix_isolation": os.environ["UNIX_ISOLATION"],
+              "process_boundary": os.environ["PROCESS_BOUNDARY"],
+              "crash_persistence": os.environ["CRASH_PERSISTENCE"],
+              "rollback_witness": os.environ["ROLLBACK_WITNESS"],
+              "rollback_hardening": os.environ["ROLLBACK_HARDENING"],
+              "multidomain_fencing": os.environ["MULTIDOMAIN_FENCING"],
+              "postgres_authority": os.environ["POSTGRES_AUTHORITY"],
+          }
+          print(json.dumps(results, indent=2))
+          assert all(result == "success" for result in results.values()), results
+          PY
