@@ -154,9 +154,11 @@ class ReceiptStore:
         try:
             dfd = os.open(self.directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
         except OSError:
-            return
+            raise NARFError("receipt: directory sync unavailable") from None
         try:
             os.fsync(dfd)
+        except OSError:
+            raise NARFError("receipt: directory sync failed") from None
         finally:
             os.close(dfd)
 
