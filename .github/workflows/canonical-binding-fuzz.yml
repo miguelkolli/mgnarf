@@ -1,0 +1,46 @@
+name: NARF canonical binding fuzz
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  canonical-binding-fuzz:
+    name: Canonical binding fuzz (10k + receipt mutations)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      CI_EVIDENCE: /tmp/narf-canonical-binding-fuzz-evidence
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run deterministic canonical and receipt fuzz
+        run: |
+          mkdir -p "$CI_EVIDENCE"
+          python3 tools/test_canonical_binding_fuzz.py \
+            --output "$CI_EVIDENCE/results" \
+            --iterations 10000 \
+            --receipt-mutations 256 \
+            2>&1 | tee "$CI_EVIDENCE/harness.log"
+      - name: Require exact fuzz boundary
+        run: |
+          python3 - "$CI_EVIDENCE/results/summary.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          summary = json.loads(Path(sys.argv[1]).read_text())
+          assert summary["result"] == "PASS", summary
+          assert summary["generated_strict_json_values"] == 10000, summary
+          assert summary["invalid_coercions_rejected"] == summary["invalid_coercion_cases"], summary
+          assert summary["receipt_mutations_rejected"] == 256, summary
+          assert not summary["roundtrip_failures"], summary
+          assert not summary["distinct_canonical_digest_collisions"], summary
+          assert summary["source_unchanged"], summary
+          print(json.dumps(summary, indent=2))
+          PY
