@@ -19,6 +19,7 @@ from .rollback_guard import (
     FileConsumptionAuthority,
     RollbackProtectedEffectExecutor,
 )
+from .signed_witness import SignedWitnessAuthority
 
 __all__ = [
     "AllOfConsumptionAuthority",
@@ -32,6 +33,7 @@ __all__ = [
     "ReceiptStore",
     "Requirement",
     "RollbackProtectedEffectExecutor",
+    "SignedWitnessAuthority",
     "VerifierBinding",
     "VerifierResult",
     "canonical_json_digest",
