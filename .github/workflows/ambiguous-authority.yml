@@ -1,0 +1,81 @@
+name: NARF ambiguous authority fault boundary
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ambiguous-authority-faults:
+    name: Ambiguous authority faults (4 fail-closed cases)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      CI_EVIDENCE: /tmp/narf-ambiguous-authority-evidence
+      NARF_POSTGRES_ADMIN_DSN: postgresql://narf_admin:narf-admin-ci@127.0.0.1:5432/narf
+      NARF_POSTGRES_APP_DSN: postgresql://narf_app:narf-app-ci@127.0.0.1:5432/narf
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_USER: narf_admin
+          POSTGRES_PASSWORD: narf-admin-ci
+          POSTGRES_DB: narf
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U narf_admin -d narf"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install authority boundary drivers
+        run: >-
+          python3 -m pip install --disable-pip-version-check --no-input
+          "psycopg[binary]>=3.2,<4" "cryptography>=43,<48"
+      - name: Bootstrap least-privilege PostgreSQL ledger
+        run: |
+          mkdir -p "$CI_EVIDENCE"
+          python3 - <<'PY'
+          import os, psycopg
+          with psycopg.connect(os.environ["NARF_POSTGRES_ADMIN_DSN"], autocommit=True) as connection:
+              with connection.cursor() as cursor:
+                  cursor.execute("CREATE ROLE narf_app LOGIN PASSWORD 'narf-app-ci'")
+                  cursor.execute("""
+                      CREATE TABLE narf_consumption_ledger (
+                          token uuid PRIMARY KEY,
+                          authority_version text NOT NULL,
+                          consumed_at timestamptz NOT NULL DEFAULT clock_timestamp()
+                      )
+                  """)
+                  cursor.execute("REVOKE ALL ON narf_consumption_ledger FROM PUBLIC")
+                  cursor.execute("GRANT SELECT, INSERT ON narf_consumption_ledger TO narf_app")
+          PY
+      - name: Run ambiguous reservation fault injection
+        run: |
+          python3 tools/test_ambiguous_authority_faults.py \
+            --output "$CI_EVIDENCE/results" \
+            --app-dsn "$NARF_POSTGRES_APP_DSN" \
+            --admin-dsn "$NARF_POSTGRES_ADMIN_DSN" \
+            2>&1 | tee "$CI_EVIDENCE/harness.log"
+      - name: Require exact ambiguous-outcome boundary
+        run: |
+          python3 - "$CI_EVIDENCE/results/summary.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          summary = json.loads(Path(sys.argv[1]).read_text())
+          assert summary["result"] == "BOUNDARY_CONFIRMED", summary
+          assert summary["planned_cases"] == 4, summary
+          assert summary["counts"] == {"PASS": 4, "FAIL": 0}, summary
+          assert summary["source_unchanged"], summary
+          assert all(case["callback_invocations"] == 0 for case in summary["cases"]), summary
+          print(json.dumps(summary, indent=2))
+          PY
