@@ -1,9 +1,8 @@
 """Standalone NARF fail-closed acceptance gate.
 
-This reference implementation preserves the core NARF trust model without
-importing MGSystem runtime internals. The trusted host freezes task/state/bindings,
-runs verifier producers itself, authenticates evidence, and owns the gated effect.
-Workers do not receive a PASS override or evidence-submission API.
+The trusted host freezes task/state/bindings, runs verifier producers itself,
+authenticates evidence, and owns the gated effect. Workers do not receive a
+PASS override or evidence-submission API.
 """
 from __future__ import annotations
 
@@ -16,7 +15,6 @@ from pathlib import Path
 import re
 from typing import Callable
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
-
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}")
@@ -113,6 +111,10 @@ def _validate_state(state: FrozenState) -> FrozenState:
     _sha256(state.requirements_sha256, "requirements_sha256")
     _sha256(state.policy_sha256, "policy_sha256")
     return state
+
+
+def _requirements_digest(frozen_requirements: list[dict]) -> str:
+    return canonical_json_digest(frozen_requirements)
 
 
 class ReceiptStore:
@@ -235,6 +237,8 @@ class NARFGate:
             seen.add(requirement.requirement_id)
             frozen.append(asdict(requirement))
 
+        requirements_set_sha256 = _requirements_digest(frozen)
+
         contract_id = str(uuid4())
         evidence = {
             "evidence_type": "narf.contract",
@@ -244,6 +248,7 @@ class NARFGate:
             "task_id": task_id,
             "task_sha256": task_sha256,
             "requirements": frozen,
+            "requirements_set_sha256": requirements_set_sha256,
             "effect_id": effect_id,
             "effect_version": effect_version,
             "state": asdict(state),
@@ -297,6 +302,8 @@ class NARFGate:
         requirements = contract.get("requirements")
         if not isinstance(requirements, list) or not requirements:
             requirements = []
+            errors.append("INVALID_CONTRACT")
+        if contract.get("requirements_set_sha256") != _requirements_digest(requirements):
             errors.append("INVALID_CONTRACT")
         expected = {item.get("verifier_id") for item in requirements if isinstance(item, dict)}
         if set(bindings) != expected:
@@ -447,6 +454,7 @@ class NARFSession:
             "session_id": self.__session_id,
             "task_id": self.__contract["task_id"],
             "task_sha256": self.__contract["task_sha256"],
+            "requirements_set_sha256": self.__contract["requirements_set_sha256"],
             "requirement_id": requirement_id,
             "verifier_id": binding.verifier_id,
             "verifier_version": binding.verifier_version,
@@ -475,6 +483,7 @@ class NARFSession:
             "session_id": self.__session_id,
             "task_id": self.__contract["task_id"],
             "task_sha256": self.__contract["task_sha256"],
+            "requirements_set_sha256": self.__contract["requirements_set_sha256"],
             "requirement_id": requirement["requirement_id"],
             "verifier_id": binding.verifier_id,
             "verifier_version": binding.verifier_version,
@@ -546,6 +555,7 @@ class NARFSession:
             "session_id": self.__session_id,
             "task_id": self.__contract["task_id"],
             "task_sha256": self.__contract["task_sha256"],
+            "requirements_set_sha256": self.__contract["requirements_set_sha256"],
             "state": self.__contract["state"],
             "result": self.__decision["result"],
             "reason": self.__decision["reason"],
@@ -574,6 +584,7 @@ class NARFSession:
             "session_id": self.__session_id,
             "task_id": self.__contract["task_id"],
             "task_sha256": self.__contract["task_sha256"],
+            "requirements_set_sha256": self.__contract["requirements_set_sha256"],
             "state": self.__contract["state"],
             "result": verdict["result"],
             "reason": verdict["reason"],
@@ -588,9 +599,6 @@ class NARFSession:
             raise NARFError("effect: authenticated PASS required")
         if self.__effect_used:
             raise NARFError("effect: already consumed")
-        # 🧠 BRAIN: A prior PASS is intentionally insufficient. The host must
-        # revalidate revocation, frozen state, and the authenticated decision
-        # immediately before the durable effect-consumption record is created.
         state_error = self._current_state_error()
         if state_error:
             raise NARFError(f"effect: {state_error.lower()}")
@@ -619,6 +627,7 @@ class NARFSession:
             "session_id": self.__session_id,
             "task_id": self.__contract["task_id"],
             "task_sha256": self.__contract["task_sha256"],
+            "requirements_set_sha256": self.__contract["requirements_set_sha256"],
             "state": self.__contract["state"],
             "effect_id": self.__effect.effect_id,
             "effect_version": self.__effect.effect_version,

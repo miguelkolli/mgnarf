@@ -1,0 +1,56 @@
+name: Publish v1.60 beta pre-release
+
+on:
+  workflow_run:
+    workflows: ["NARF reference checks"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish exact verified beta tag
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+      RELEASE_TAG: v1.60-beta.1
+    steps:
+      - name: Checkout exact verified main revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify release source binding
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test -f RELEASE-v1.60-beta.1.md
+      - name: Create or verify immutable beta release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if existing_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha' 2>/dev/null)"; then
+            if [ "$existing_sha" != "$RELEASE_SHA" ]; then
+              echo "Existing ${RELEASE_TAG} points to ${existing_sha}, expected ${RELEASE_SHA}; refusing retarget." >&2
+              exit 1
+            fi
+            gh release view "$RELEASE_TAG" >/dev/null
+            echo "${RELEASE_TAG} already exists on the exact verified SHA; leaving it unchanged."
+            exit 0
+          fi
+
+          gh release create "$RELEASE_TAG" \
+            --target "$RELEASE_SHA" \
+            --title "$RELEASE_TAG" \
+            --prerelease \
+            --notes-file RELEASE-v1.60-beta.1.md
+
+          created_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha')"
+          test "$created_sha" = "$RELEASE_SHA"
