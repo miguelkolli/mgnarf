@@ -11,7 +11,7 @@ Before an action is allowed, NARF asks:
 - Did every required verifier actually run and pass?
 - Is the evidence authentic, complete and current?
 - Has relevant state changed, been revoked or been inhibited?
-- Has this action already been consumed?
+- Has this operation already been consumed?
 
 If any required condition is missing, uncertain or invalid, NARF does **not** manufacture PASS.
 
@@ -23,25 +23,21 @@ NARF does not make an AI correct, sandbox an entire system or certify a producti
 
 NARF is a standalone fail-closed acceptance gate for AI-assisted and automated work.
 
-It has no required parent framework, private repository, workspace variable, external governance runtime or project harness. The core reference gate uses the Python standard library. Optional authority adapters may add external dependencies for their own measured boundary.
+It has no required parent framework, private repository, workspace variable, external governance runtime or project harness. The core reference gate uses the Python standard library. Optional authority adapters add dependencies only for their own measured boundary.
 
-## Status: beta reference implementation
+## Status: beta reference implementation — v1.60 RC1 freeze
 
-NARF is available for review, host-integration development and pre-production evaluation. **Beta** is a maturity label for the documented reference scope; it is not a production-host security certification.
+NARF is in the `v1.60-rc1` release-freeze track. **RC1 is not considered published until an immutable tag points to an exact merged `main` commit whose required aggregate checks have succeeded.** Until that tag exists, the published release remains `v1.60-beta.1`.
 
-The required merge gate now aggregates the repository tests, compilation, distinct UID/GID isolation, trusted-host/untrusted-worker process boundary, crash persistence, the filesystem rollback limitation witness, rollback hardening, multi-domain fencing and the PostgreSQL authority boundary. A required boundary that is skipped, cancelled or fails prevents the aggregate required check from succeeding.
+The merge-required reference gate now covers repository tests and compilation, strict canonical task binding, distinct UID/GID isolation, trusted-host/untrusted-worker process separation, crash persistence, filesystem rollback characterization, rollback hardening, multi-domain fencing, PostgreSQL consumption authority, Ed25519 signed witness fencing, stable operation-ID binding, high-fanout same-operation races, ambiguous durable-reservation outcomes, and the strict trusted reference-host transition. A required boundary that fails, skips or is cancelled prevents the aggregate required check from succeeding.
 
-Rollback claims are deliberately scoped. The filesystem-only receipt store is **not** rollback resistant. The measured hardened paths block replay while at least one independent consumption-authority history survives; the PostgreSQL fixture also demonstrates least-privilege runtime credentials and a single database winner under concurrent reservation. A privileged common control plane that can rewind every authority history remains an explicit limitation.
+Additional focused workflows retain deterministic evidence for canonical/receipt fuzzing and integration fault injection. A green limitation witness means the documented limitation was reproduced exactly; it does not relabel that limitation as a security PASS.
 
-Production-host integration, production sandboxing, physical-power-loss behavior, exactly-once remote completion and privileged whole-authority rollback remain **UNVERIFIED** outside the documented fixtures.
+The current release-candidate threat model and measured boundary are summarized in [TRUST-BOUNDARY-AUDIT-v1.60.md](TRUST-BOUNDARY-AUDIT-v1.60.md). RC1 release notes are in [RELEASE-v1.60-rc1.md](RELEASE-v1.60-rc1.md).
 
-The alpha-to-beta rules are defined in [BETA-ACCEPTANCE.md](BETA-ACCEPTANCE.md). The `v1.60-beta.1` pre-release is published only from an exact merged `main` commit after the required aggregate reference check succeeds.
+Rollback claims remain deliberately scoped. The filesystem receipt store is **not** rollback resistant. Hardened paths block replay while at least one independent consumption-authority history survives. If privileged operators can rewind the signed witness, PostgreSQL ledger and every other preserving authority history together, replay can return; that remains an explicit `LIMITATION_CONFIRMED` boundary.
 
-### Historical promotion baseline
-
-The original promotion baseline was observed in [GitHub Actions run 38117123064](https://github.com/miguelkolli/mgnarf/actions/runs/38117123064) on 2026-10-11 for commit [`478c3958beaf699c2db34d255fde764f4f38f596`](https://github.com/miguelkolli/mgnarf/commit/478c3958beaf699c2db34d255fde764f4f38f596).
-
-That baseline recorded 34/34 repository tests PASS, 24/24 Unix isolation cases PASS and compile PASS. It is historical evidence, not a substitute for current exact-revision CI. Check the [current reference workflow](https://github.com/miguelkolli/mgnarf/actions/workflows/reference-tests.yml) for current evidence.
+Production-host isolation, production control-plane independence, physical-power-loss behavior, exactly-once remote completion, and privileged whole-authority rollback remain outside the measured guarantee.
 
 ## Core rule
 
@@ -70,20 +66,43 @@ PASS = frozen task binding
 
 If any required condition is absent or invalid, NARF must not manufacture PASS.
 
+## Measured v1.60 boundary
+
+The RC track includes evidence for:
+
+- a strict Python-host JSON data model for security bindings; coercible non-JSON Python values fail closed;
+- deterministic canonical/receipt fuzzing with 10,000 generated strict JSON values and 256 stale-MAC receipt mutations;
+- exact task, candidate, policy, external-goalpost and verifier-requirement-set bindings;
+- host-owned verifier execution with authenticated N/N evidence;
+- revocation, inhibitor and state revalidation before effect;
+- Unix UID/GID and trusted-host/untrusted-worker process boundaries;
+- crash windows and at-most-once callback invocation characterization;
+- rollback-protected single-use authorities and all-of multi-domain fencing;
+- least-privilege PostgreSQL reservation with concurrent single-winner behavior;
+- Ed25519 signed witness responses with fresh nonce binding;
+- stable authenticated host-owned operation IDs across fresh contracts;
+- a synchronized 16-host same-operation race requiring exactly one callback and fifteen consumed-token blocks;
+- fail-closed ambiguous reservation outcomes when a durable witness or PostgreSQL reservation succeeds but its acknowledgement is lost;
+- strict task validation at both the core gate and the trusted reference-host integration boundary.
+
+These are measured reference boundaries, not an independent security certification.
+
 ## Repository
 
 - [NARF-SPEC.md](NARF-SPEC.md) — behavioral specification.
 - [INDEPENDENCE.md](INDEPENDENCE.md) — standalone/dependency boundary.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — reference architecture and trust boundary.
-- [HOST-CONTRACT.md](HOST-CONTRACT.md) — host locking, immutable effect input, receipt-history protection and persistence obligations.
-- [REFERENCE-HOST.md](REFERENCE-HOST.md) and [PROCESS-BOUNDARY.md](PROCESS-BOUNDARY.md) — concrete trusted-host examples.
+- [HOST-CONTRACT.md](HOST-CONTRACT.md) — host locking, immutable effect input and persistence obligations.
+- [REFERENCE-HOST.md](REFERENCE-HOST.md) and [PROCESS-BOUNDARY.md](PROCESS-BOUNDARY.md) — trusted-host examples.
 - [ROLLBACK-BOUNDARY.md](ROLLBACK-BOUNDARY.md), [ROLLBACK-HARDENING.md](ROLLBACK-HARDENING.md) and [MULTIDOMAIN-FENCING.md](MULTIDOMAIN-FENCING.md) — measured rollback boundaries.
-- [POSTGRES-AUTHORITY.md](POSTGRES-AUTHORITY.md) — separately running PostgreSQL consumption authority and its limits.
+- [POSTGRES-AUTHORITY.md](POSTGRES-AUTHORITY.md) — PostgreSQL authority boundary and limits.
+- [TRUST-BOUNDARY-AUDIT-v1.60.md](TRUST-BOUNDARY-AUDIT-v1.60.md) — RC1 whole-chain adversarial audit.
+- [RELEASE-v1.60-rc1.md](RELEASE-v1.60-rc1.md) — RC1 release scope and known limitations.
 - [src/narf/](src/narf/) — Python reference implementation and authority adapters.
 - [tests/](tests/) and [tools/](tools/) — regression and adversarial fixtures.
 - [TEST-REPORT.md](TEST-REPORT.md) — recorded evidence and historical limitations.
-- [BETA-ACCEPTANCE.md](BETA-ACCEPTANCE.md) — beta promotion/release gate.
-- [RELEASE-v1.60-beta.1.md](RELEASE-v1.60-beta.1.md) — beta pre-release notes.
+- [BETA-ACCEPTANCE.md](BETA-ACCEPTANCE.md) — historical beta promotion gate.
+- [RELEASE-v1.60-beta.1.md](RELEASE-v1.60-beta.1.md) — first beta pre-release notes.
 - [LICENSE](LICENSE), [NOTICE](NOTICE) and [TRADEMARKS.md](TRADEMARKS.md) — license, attribution and branding.
 
 ## Run the tests
@@ -93,7 +112,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 python3 -m compileall -q src tests tools
 ```
 
-The process regressions target Unix. A skip is not PASS in the required reference workflow. The 24-case Unix fixture requires Linux credential-switch authority; if that authority is unavailable, the fixture reports UNVERIFIED rather than inventing PASS.
+The process regressions target Unix. A skip is not PASS in the required reference workflow. Fixtures that cannot exercise their intended authority report the missing boundary rather than inventing PASS.
 
 ## Trust model
 
@@ -103,22 +122,26 @@ The integrating trusted host owns:
 - frozen task, candidate, external goalpost, policy and exact verifier-requirement bindings;
 - verifier selection and execution;
 - revocation and current-state probes;
+- semantic operation identity for the operation-bound path;
 - any external consumption authority used for rollback hardening;
 - the gated effect callback.
 
-Python attribute privacy is not a security boundary. Candidate code and untrusted workers must be separated from host authority by an enforced OS/process/sandbox boundary or an equivalent mechanism. There is intentionally no candidate evidence-submission or PASS-override API.
+Python attribute privacy is not a security boundary. Candidate code and untrusted workers must be separated from host authority by an enforced OS/process/sandbox boundary or equivalent mechanism. There is intentionally no candidate evidence-submission or PASS-override API.
 
 Verifier artifacts are hashed and authenticated as evidence, but the gate does not reinterpret a verifier's domain logic. Verifier correctness and selection remain trusted-host responsibilities.
 
 ## Integration limits
 
-- Relevant state and revocation changes must share the host's authority lock or transaction with the complete synchronous `execute_effect` call. NARF cannot synchronize an actor that bypasses that protocol.
-- The filesystem receipt store authenticates contents but cannot make history monotonic. If rollback/deletion is in scope, use an independent consumption authority such as the documented hardened adapters.
-- A callback exception may leave authorization consumed without completing the external action. NARF prefers at-most-once invocation over availability; retry requires a new contract or a target-side idempotency/recovery protocol.
-- Session execution state is in memory. A host crash before a durable final decision may require opening a new session and rerunning verifiers.
-- The reference fixtures do not certify an arbitrary production sandbox, database control plane, deployment or remote target.
+- The trusted host defines semantic `operation_id`. If it deliberately assigns a new operation ID to the same real-world operation, the gate cannot infer that the two IDs should be one operation.
+- Relevant state and revocation changes must participate in the host's authority lock, transaction or fencing protocol with the complete synchronous effect path.
+- The filesystem receipt store authenticates contents but cannot make history monotonic. Use independent consumption authorities when rollback/deletion is in scope.
+- If every preserving authority history is rolled back together, replay can return.
+- An ambiguous durable reservation is never released automatically. Availability may be sacrificed rather than risk replay.
+- A callback exception may leave authorization consumed without completing the external action. NARF does not claim exactly-once remote completion.
+- Session execution state is memory-resident. A crash can require a fresh session and repeated verification.
+- The reference fixtures do not certify an arbitrary production sandbox, database control plane, witness operator, deployment or remote target.
 
-Read [HOST-CONTRACT.md](HOST-CONTRACT.md) before integrating an effect. NARF PASS applies only to the measured scope.
+Read [HOST-CONTRACT.md](HOST-CONTRACT.md) and [TRUST-BOUNDARY-AUDIT-v1.60.md](TRUST-BOUNDARY-AUDIT-v1.60.md) before integrating an effect. NARF PASS applies only to the measured scope.
 
 ## License and attribution
 
