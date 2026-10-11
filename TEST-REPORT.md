@@ -13,8 +13,8 @@ All seven Python source/test files were checked against that tree before
 the post-merge test run. The merged tree equals the previously tested PR #4
 tree. This report is added in a later documentation-only commit.
 
-**Local reference tests: PASS. Whole host integration and production
-readiness: UNVERIFIED. GitHub CI: UNVERIFIED.**
+**Local reference tests: PASS. GitHub CI: PASS for the recorded execution below.
+Whole host integration and production readiness: UNVERIFIED.**
 
 This assessment concerns external standalone `miguelkolli/mgnarf`.
 MGSystem is outside its scope.
@@ -138,7 +138,8 @@ The authoring executor and the earlier non-interactive Codex run remain
 historically UNVERIFIED because they lacked credential-switch authority.
 This successful manual fixture run does not certify a production host,
 OS sandbox, receipt-history rollback resistance or physical power-loss safety.
-GitHub CI remains a separate unverified boundary.
+At that local follow-up, GitHub CI remained unverified; the later execution
+is recorded separately below.
 
 ## Local Codex evidence-audit follow-up — 2026-10-11
 
@@ -189,6 +190,51 @@ The measured scope remains a disposable host-owned Unix fixture. Production
 sandboxing, deployment behavior, rollback resistance, power-loss safety and
 GitHub CI are not certified by this result.
 
+## GitHub Actions execution — 2026-10-11
+
+The assistant enabled [.github/workflows/reference-tests.yml](.github/workflows/reference-tests.yml)
+and directly retrieved the GitHub run, completed job steps and job logs for
+[run 38115304835](https://github.com/miguelkolli/mgnarf/actions/runs/38115304835), attempt 1.
+GitHub reports the run **completed / success** for commit
+[`288f927f5396c1a7141c5c9149270eb6df1a4c8f`](https://github.com/miguelkolli/mgnarf/commit/288f927f5396c1a7141c5c9149270eb6df1a4c8f).
+
+| GitHub job / check | Observed result |
+| --- | --- |
+| Reference tests (no skips) | 34 tests, 0 failures, 0 errors, 0 skips; PASS |
+| Compile source, tests and harness | Successful job step; PASS |
+| Distinct UID-GID isolation (24 cases) | 24/24 PASS, 24 protected operations executed |
+| Unix source and frozen plan | Both unchanged |
+| Artifact preservation | Both job artifacts uploaded successfully |
+
+The reference log records Python 3.12.3 and
+Linux-6.17.0-1022-azure-x86_64-with-glibc2.39. Both jobs use the
+ubuntu-24.04 hosted-runner label. The Unix job uses the actual reviewed
+harness with non-interactive sudo on that runner; a credential-switch failure
+would produce exit 2 and fail the job. Its subsequent validation step requires
+exactly 24 PASS cases and 24 executed protected operations.
+
+The reference check fails on any skipped test or an empty suite.
+The workflow has read-only contents permission, does not persist checkout
+credentials, pins checkout/upload actions to verified commit SHAs and retains
+job evidence for 30 days.
+
+| Recorded artifact | GitHub artifact ID | GitHub-reported ZIP SHA256 |
+| --- | ---: | --- |
+| narf-unix-38115304835-1 | 11693282467 | `66e05d034dadf2db2e25461ef5af8b8f250a9a41fad5c0b23a7f4801d3f6758f` |
+| narf-reference-38115304835-1 | 11693267462 | `37a12e36cc2fa98995ec93317eaf35de6575c5d4352d4afb5c0668828fac8b0a` |
+
+These metadata digests were retrieved from GitHub; this CI follow-up did not
+download and independently unpack these archives. Run logs and the completed
+validation steps support the reported counts. The earlier owner's local
+snapshot audit is a separate assessment.
+
+This is observed **GitHub CI PASS for the recorded commit**, replacing the
+earlier absence of CI evidence for this reference scope. It does not certify
+production sandboxing, rollback-resistant receipt history, physical power-loss
+safety or exactly-once external completion. The report update itself is a
+later documentation-only commit; each later release candidate still needs
+passing checks on its own exact revision. No tag or release was created.
+
 ## Remaining limits
 
 - The authoring executor could not exercise distinct-account ACL/UID isolation.
@@ -206,8 +252,9 @@ GitHub CI are not certified by this result.
 - Physical power loss and durable remote-target acknowledgement were not
   tested. At-most-once callback invocation does not guarantee exactly-once
   completion of an external action.
-- No GitHub workflow runs or commit statuses existed for the merged commit
-  at the final check. Local PASS is not GitHub CI PASS.
+- The original post-merge check had no GitHub CI runs. The later recorded
+  Actions execution passed; subsequent release commits require their own
+  passing checks. Local results alone do not replace those checks.
 - The assessment and evidence audit were performed by the same assistant.
   This is not an independent security certification.
 - The user's external local checkout was unavailable in this environment;
