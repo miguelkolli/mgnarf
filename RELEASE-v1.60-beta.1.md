@@ -1,60 +1,58 @@
 # v1.60-beta.1 — standalone reference beta
 
-Prepared release notes for tag `v1.60-beta.1`. Publishing this document alone does not create a tag or GitHub release. The intended release is a **beta pre-release**.
+This is the release note for the first NARF beta pre-release. The tag is valid only when it points to an exact merged `main` commit whose required aggregate reference check completed successfully.
 
 ## Scope
 
-NARF is a standalone fail-closed acceptance gate for AI-assisted and automated work. This beta covers the Python standard-library reference implementation, authenticated receipts, frozen task/candidate bindings, pre-effect revalidation and at-most-once callback invocation under the documented trusted-host contract.
+NARF is a standalone fail-closed acceptance gate for AI-assisted and automated work. This beta includes:
 
-MGSystem is outside this release scope.
+- authenticated host receipts;
+- frozen task and candidate bindings;
+- a gate-computed digest of the exact verifier requirement set;
+- verifier identity/version binding and N/N coverage;
+- revocation, inhibitor and state revalidation;
+- single-use effect consumption;
+- a trusted file-host reference integration;
+- distinct UID/GID and trusted-host/untrusted-worker process fixtures;
+- abrupt host-process crash/at-most-once characterization;
+- an explicit filesystem rollback limitation witness;
+- rollback-protected consumption authority;
+- multi-domain all-of fencing;
+- a least-privilege PostgreSQL consumption authority boundary.
 
-Beta indicates increased maturity of the standalone reference implementation and its recorded verification process. It does **not** certify an integrating production host, deployment sandbox or external effect system.
+Beta describes maturity of this reference scope. It does **not** certify an arbitrary production host, sandbox, database control plane or external effect system.
 
-## Promotion gate
+## Required release gate
 
-The alpha-to-beta conditions are defined in [BETA-ACCEPTANCE.md](BETA-ACCEPTANCE.md).
+The release commit must pass the required `Reference tests (no skips)` merge context. That context is an aggregate and fails unless all of these jobs succeed on the same exact revision:
 
-The `v1.60-beta.1` tag must point to the exact merged `main` commit whose required NARF reference checks have completed successfully. Do not publish the beta tag from an unverified PR head or from a later untested commit.
+1. repository tests and compile;
+2. distinct UID/GID isolation;
+3. trusted-host/untrusted-worker process boundary;
+4. crash persistence / at-most-once boundary;
+5. filesystem rollback limitation witness with its expected `LIMITATION_CONFIRMED` result;
+6. rollback hardening;
+7. multi-domain fencing with its documented limitation preserved;
+8. PostgreSQL authority boundary with its documented privileged-admin limitation preserved.
 
-## Baseline evidence
+A green limitation-witness job means the documented limitation was reproduced exactly. It does not relabel that limitation as a security PASS.
 
-The promotion started from main commit
-[`478c3958beaf699c2db34d255fde764f4f38f596`](https://github.com/miguelkolli/mgnarf/commit/478c3958beaf699c2db34d255fde764f4f38f596).
+## Rollback claim boundary
 
-[GitHub Actions run 38117123064](https://github.com/miguelkolli/mgnarf/actions/runs/38117123064) completed successfully for that baseline on 2026-10-11.
+The filesystem receipt store authenticates receipt contents but is not monotonic storage. Deleting a deterministic consumption record or restoring a valid older filesystem snapshot can resurrect authorization in that baseline model.
 
-| Check | Baseline result |
-| --- | --- |
-| Repository tests | 34/34 PASS; 0 failures, 0 errors, 0 skips |
-| Distinct UID/GID fixture | 24/24 PASS; 24 protected operations executed |
-| Compile source, tests and harness | PASS |
-| Unix gate source and frozen plan | Unchanged |
+The hardened consumption-authority path blocks replay while at least one authority domain retains the consumed token. The PostgreSQL fixture further demonstrates a separately running service, least-privilege application credentials, fail-closed unavailability and a single database winner for concurrent reservations.
 
-The beta candidate and final merged main commit must also satisfy the promotion gate. The baseline is not a substitute for that verification.
+A privileged control plane that can rewind **every** authority history remains a documented limitation. This release does not claim Byzantine tolerance, independent administration merely from process separation, cross-region linearizability, physical-power-loss guarantees or rollback resistance against a coordinated privileged restore.
 
-## What changes with beta
+## Other limits
 
-- The public maturity label moves from alpha to beta for the standalone reference implementation.
-- Promotion requirements are now explicit and fail closed in `BETA-ACCEPTANCE.md`.
-- Release publication is bound to successful verification of the exact final main commit.
-- Known production integration limits remain visible rather than being reclassified as PASS.
-
-No production-host certification is claimed by this maturity change.
-
-## Integration requirements and limits
-
-The integrating trusted host owns the receipt key, verifier/effect bindings,
-current-state and revocation authority. It must protect receipt storage and
-its parents, preserve consumption history, bind immutable effect inputs and
-serialize relevant mutations with the complete synchronous effect call.
-
-The Unix results apply to a disposable host-owned fixture. Production-host
-integration, production sandboxing, deployment behavior, rollback-resistant
-history, physical power-loss safety and durable remote acknowledgement remain
-**UNVERIFIED**.
-
-At-most-once callback invocation does not promise exactly-once completion of
-an external action. This beta is not an independent security certification.
+- Python name mangling is not an isolation boundary; host secrets require OS/process/sandbox separation from untrusted workers.
+- State and revocation probes are host-owned. Relevant mutators must participate in the same authority lock, transaction or fencing protocol as the complete effect.
+- The gate hashes verifier artifacts but does not independently interpret verifier domain logic. Verifier quality remains a trusted-host responsibility.
+- Session run state is memory-resident; a crash can require a fresh session and repeated verification.
+- Consumption is reserved before callback invocation. A failed callback may burn the authorization; exactly-once remote completion is outside the gate.
+- This project has not received an independent security certification.
 
 ## License
 
@@ -66,5 +64,5 @@ This software includes software originally developed as MGNARF Ändi.
 
 See [LICENSE](LICENSE) and [TRADEMARKS.md](TRADEMARKS.md).
 
-> PINKY: Are we calling it finished, Brain?  
-> BRAIN: No. We are promoting only what the evidence supports.
+> PINKY: Beta means the evidence boundary is clearer, not that the universe is solved.  
+> BRAIN: Precisely.

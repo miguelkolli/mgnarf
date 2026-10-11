@@ -1,9 +1,8 @@
 """Standalone NARF fail-closed acceptance gate.
 
-This reference implementation preserves the core NARF trust model without
-importing MGSystem runtime internals. The trusted host freezes task/state/bindings,
-runs verifier producers itself, authenticates evidence, and owns the gated effect.
-Workers do not receive a PASS override or evidence-submission API.
+The trusted host freezes task/state/bindings, runs verifier producers itself,
+authenticates evidence, and owns the gated effect. Workers do not receive a
+PASS override or evidence-submission API.
 """
 from __future__ import annotations
 

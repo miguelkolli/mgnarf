@@ -4,76 +4,62 @@
 
 AI systems can write code and take actions quickly, but **“looks good” is not the same as “proved safe to run.”** NARF is a small safety gate between AI-assisted work and the action that work is allowed to trigger.
 
-Before an action is allowed, NARF asks a few simple questions:
+Before an action is allowed, NARF asks:
 
-- Are we still approving the exact same task and result that were checked?
-- Did every required check actually run and pass?
-- Is the evidence authentic and complete?
-- Has anything important changed since approval?
-- Has the action already been used, revoked or blocked?
+- Are we still approving the exact same task and candidate that were checked?
+- Is the exact verifier requirement set the one that was frozen?
+- Did every required verifier actually run and pass?
+- Is the evidence authentic, complete and current?
+- Has relevant state changed, been revoked or been inhibited?
+- Has this action already been consumed?
 
-If the answer to any required question is missing, uncertain or invalid, NARF does **not** invent a PASS.
+If any required condition is missing, uncertain or invalid, NARF does **not** manufacture PASS.
 
 Think of it as a checkpoint for AI-assisted automation: **evidence first, action second**.
 
-NARF does not make an AI correct, sandbox an entire system or certify a production deployment. It provides a reference implementation for enforcing one narrower rule: an automated action should happen only when the required evidence still supports that exact action at the moment it is executed.
+NARF does not make an AI correct, sandbox an entire system or certify a production deployment. It enforces a narrower rule: an automated action should happen only when the required evidence still supports that exact action at the moment it is executed.
 
 ## Technical summary
 
 NARF is a standalone fail-closed acceptance gate for AI-assisted and automated work.
 
-It has no required parent framework, workspace variable, private repository, external governance system, or project harness. The reference implementation uses only the Python standard library.
+It has no required parent framework, private repository, workspace variable, external governance runtime or project harness. The core reference gate uses the Python standard library. Optional authority adapters may add external dependencies for their own measured boundary.
 
 ## Status: beta reference implementation
 
-NARF is available for review, host-integration development and pre-production evaluation.
-The current development status is **beta**. Beta means the standalone reference implementation has repeatable recorded verification for its documented scope; it does **not** certify an integrating production host or external effect system.
+NARF is available for review, host-integration development and pre-production evaluation. **Beta** is a maturity label for the documented reference scope; it is not a production-host security certification.
 
-The recorded standalone reference checks pass. Production-host integration,
-deployment sandboxing, rollback-resistant history, physical power-loss safety
-and durable remote acknowledgement remain **UNVERIFIED**.
+The required merge gate now aggregates the repository tests, compilation, distinct UID/GID isolation, trusted-host/untrusted-worker process boundary, crash persistence, the filesystem rollback limitation witness, rollback hardening, multi-domain fencing and the PostgreSQL authority boundary. A required boundary that is skipped, cancelled or fails prevents the aggregate required check from succeeding.
 
-The alpha-to-beta promotion rules are defined in [BETA-ACCEPTANCE.md](BETA-ACCEPTANCE.md). A beta tag may be published only from an exact main-branch commit whose required reference checks have completed successfully.
+Rollback claims are deliberately scoped. The filesystem-only receipt store is **not** rollback resistant. The measured hardened paths block replay while at least one independent consumption-authority history survives; the PostgreSQL fixture also demonstrates least-privilege runtime credentials and a single database winner under concurrent reservation. A privileged common control plane that can rewind every authority history remains an explicit limitation.
 
-### Recorded verification baseline
+Production-host integration, production sandboxing, physical-power-loss behavior, exactly-once remote completion and privileged whole-authority rollback remain **UNVERIFIED** outside the documented fixtures.
 
-The pre-promotion baseline was observed in
-[GitHub Actions run 38117123064](https://github.com/miguelkolli/mgnarf/actions/runs/38117123064)
-on 2026-10-11, for exact main commit
-[`478c3958beaf699c2db34d255fde764f4f38f596`](https://github.com/miguelkolli/mgnarf/commit/478c3958beaf699c2db34d255fde764f4f38f596).
+The alpha-to-beta rules are defined in [BETA-ACCEPTANCE.md](BETA-ACCEPTANCE.md). The `v1.60-beta.1` pre-release is published only from an exact merged `main` commit after the required aggregate reference check succeeds.
 
-| Check | Observed result |
-| --- | --- |
-| Repository regression suite | **34/34 PASS**, 0 failures, 0 errors, 0 skips |
-| Unix UID/GID isolation fixture | **24/24 PASS**, 24 protected operations executed |
-| Compile source, tests and Unix harness | **PASS** |
-| Unix gate source and frozen plan | Unchanged during the run |
+### Historical promotion baseline
 
-The Unix cases use a disposable host-owned fixture and workers under a distinct
-UID/GID. They test OS denial of key/receipt tampering, positive access controls,
-unchanged host state and rejection of replay. They are separate from the
-34 unittest methods.
+The original promotion baseline was observed in [GitHub Actions run 38117123064](https://github.com/miguelkolli/mgnarf/actions/runs/38117123064) on 2026-10-11 for commit [`478c3958beaf699c2db34d255fde764f4f38f596`](https://github.com/miguelkolli/mgnarf/commit/478c3958beaf699c2db34d255fde764f4f38f596).
 
-The baseline above is not a substitute for beta-candidate CI. Check the
-[latest workflow runs](https://github.com/miguelkolli/mgnarf/actions/workflows/reference-tests.yml)
-and see [BETA-ACCEPTANCE.md](BETA-ACCEPTANCE.md) and [TEST-REPORT.md](TEST-REPORT.md) for promotion requirements, detailed evidence, earlier supplemental runs, audit findings and limitations. Earlier parameterized repetitions are not counted as additional current CI tests.
+That baseline recorded 34/34 repository tests PASS, 24/24 Unix isolation cases PASS and compile PASS. It is historical evidence, not a substitute for current exact-revision CI. Check the [current reference workflow](https://github.com/miguelkolli/mgnarf/actions/workflows/reference-tests.yml) for current evidence.
 
 ## Core rule
 
 ```text
 PASS only when the exact frozen task/candidate has complete authenticated
-verifier evidence, every required verifier passes, relevant state is unchanged,
-no inhibitor or revocation exists, and state is revalidated immediately before
-the gated effect.
+verifier evidence for the exact frozen verifier requirement set, every required
+verifier passes, relevant state is unchanged, no inhibitor or revocation exists,
+and state is revalidated immediately before the gated effect.
 ```
 
 Equivalently:
 
 ```text
-PASS = frozen bindings
-    AND candidate unchanged
-    AND requirements unchanged
-    AND policy unchanged
+PASS = frozen task binding
+    AND frozen candidate binding
+    AND exact verifier-requirement-set binding
+    AND external goalpost binding unchanged
+    AND policy binding unchanged
     AND coverage N/N
     AND all verifiers PASS
     AND no inhibitors
@@ -82,7 +68,7 @@ PASS = frozen bindings
     AND pre-effect revalidation
 ```
 
-If any required condition is missing or invalid, NARF must not manufacture PASS.
+If any required condition is absent or invalid, NARF must not manufacture PASS.
 
 ## Repository
 
@@ -90,83 +76,61 @@ If any required condition is missing or invalid, NARF must not manufacture PASS.
 - [INDEPENDENCE.md](INDEPENDENCE.md) — standalone/dependency boundary.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — reference architecture and trust boundary.
 - [HOST-CONTRACT.md](HOST-CONTRACT.md) — host locking, immutable effect input, receipt-history protection and persistence obligations.
-- [src/narf/gate.py](src/narf/gate.py) — Python reference implementation.
-- [tests/](tests/) — reference and adversarial regression tests.
-- [tools/test_unix_isolation.py](tools/test_unix_isolation.py) — distinct-UID/GID isolation harness.
-- [CODEX-UNIX-TESTS.md](CODEX-UNIX-TESTS.md) — local Unix harness instructions and required privileges.
-- [TEST-REPORT.md](TEST-REPORT.md) — recorded verification and evidence limits.
-- [BETA-ACCEPTANCE.md](BETA-ACCEPTANCE.md) — alpha-to-beta promotion gate and release conditions.
-- [RELEASE-v1.60-beta.1.md](RELEASE-v1.60-beta.1.md) — prepared beta pre-release notes.
-- [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md) — historical reference-alpha release checklist.
+- [REFERENCE-HOST.md](REFERENCE-HOST.md) and [PROCESS-BOUNDARY.md](PROCESS-BOUNDARY.md) — concrete trusted-host examples.
+- [ROLLBACK-BOUNDARY.md](ROLLBACK-BOUNDARY.md), [ROLLBACK-HARDENING.md](ROLLBACK-HARDENING.md) and [MULTIDOMAIN-FENCING.md](MULTIDOMAIN-FENCING.md) — measured rollback boundaries.
+- [POSTGRES-AUTHORITY.md](POSTGRES-AUTHORITY.md) — separately running PostgreSQL consumption authority and its limits.
+- [src/narf/](src/narf/) — Python reference implementation and authority adapters.
+- [tests/](tests/) and [tools/](tools/) — regression and adversarial fixtures.
+- [TEST-REPORT.md](TEST-REPORT.md) — recorded evidence and historical limitations.
+- [BETA-ACCEPTANCE.md](BETA-ACCEPTANCE.md) — beta promotion/release gate.
+- [RELEASE-v1.60-beta.1.md](RELEASE-v1.60-beta.1.md) — beta pre-release notes.
 - [LICENSE](LICENSE), [NOTICE](NOTICE) and [TRADEMARKS.md](TRADEMARKS.md) — license, attribution and branding.
 
 ## Run the tests
-
-The reference implementation uses Python's standard library. The recorded CI
-baseline used Python 3.12.3 on Linux. Run these commands from the repository root:
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 python3 -m compileall -q src tests tools
 ```
 
-The process regressions target Unix. Report skipped tests as skipped; a skip
-is not PASS. The CI reference job rejects any skipped test or an empty suite.
-
-The separate 24-case Unix harness requires Linux credential-switch authority.
-Follow [CODEX-UNIX-TESTS.md](CODEX-UNIX-TESTS.md) to run it in a disposable fixture.
-If credential switching is unavailable, it records **UNVERIFIED** and exits 2.
+The process regressions target Unix. A skip is not PASS in the required reference workflow. The 24-case Unix fixture requires Linux credential-switch authority; if that authority is unavailable, the fixture reports UNVERIFIED rather than inventing PASS.
 
 ## Trust model
 
 The integrating trusted host owns:
 
-- the HMAC receipt key;
-- frozen task/state/requirement bindings;
+- the HMAC receipt key and receipt-store authority;
+- frozen task, candidate, external goalpost, policy and exact verifier-requirement bindings;
 - verifier selection and execution;
 - revocation and current-state probes;
+- any external consumption authority used for rollback hardening;
 - the gated effect callback.
 
-Candidate code and implementation workers must not receive those authorities. There is intentionally no evidence-submission or PASS-override API for candidate code.
+Python attribute privacy is not a security boundary. Candidate code and untrusted workers must be separated from host authority by an enforced OS/process/sandbox boundary or an equivalent mechanism. There is intentionally no candidate evidence-submission or PASS-override API.
 
-An integrating host must serialize relevant state/revocation changes with the complete gated effect and preserve receipt history. See [the trusted-host integration contract](HOST-CONTRACT.md) for the tested locking pattern and its limits.
-
-## Integration
-
-Other systems may integrate NARF. That dependency is one-way: an integration may depend on NARF, but NARF does not depend on the integrating system.
+Verifier artifacts are hashed and authenticated as evidence, but the gate does not reinterpret a verifier's domain logic. Verifier correctness and selection remain trusted-host responsibilities.
 
 ## Integration limits
 
-- The trusted host must keep the receipt key, store and relevant parent
-  directories outside untrusted-worker authority. HMAC authenticates receipt
-  contents; filesystem permissions or another enforced boundary provide
-  access control.
-- Relevant state and revocation changes must share the host's authority lock
-  or transaction with the complete synchronous `execute_effect` call.
-  Effect inputs must remain bound to the approved task/candidate.
-- The host must preserve consumption history. Receipt authentication alone
-  does not prevent deletion or restoration of an older valid store.
-- Consumption is reserved before callback invocation. An exception may leave
-  the effect consumed without completing the external action. The guarantee
-  is at-most-once callback invocation under the documented contract;
-  exactly-once external completion requires additional host design.
-- The recorded Unix fixture does not certify an integrating application's
-  production sandbox, deployment or remote-target durability.
+- Relevant state and revocation changes must share the host's authority lock or transaction with the complete synchronous `execute_effect` call. NARF cannot synchronize an actor that bypasses that protocol.
+- The filesystem receipt store authenticates contents but cannot make history monotonic. If rollback/deletion is in scope, use an independent consumption authority such as the documented hardened adapters.
+- A callback exception may leave authorization consumed without completing the external action. NARF prefers at-most-once invocation over availability; retry requires a new contract or a target-side idempotency/recovery protocol.
+- Session execution state is in memory. A host crash before a durable final decision may require opening a new session and rerunning verifiers.
+- The reference fixtures do not certify an arbitrary production sandbox, database control plane, deployment or remote target.
 
-Read [HOST-CONTRACT.md](HOST-CONTRACT.md) before integrating an effect.
-NARF's reference-test PASS applies to the measured scope.
+Read [HOST-CONTRACT.md](HOST-CONTRACT.md) before integrating an effect. NARF PASS applies only to the measured scope.
 
 ## License and attribution
 
 The source code is licensed under the Apache License, Version 2.0. See `LICENSE`.
 
-Redistributions and derivative works must preserve the applicable attribution from `NOTICE` as required by Apache-2.0. The project attribution is:
+Redistributions and derivative works must preserve the applicable attribution from `NOTICE`:
 
 ```text
 This software includes software originally developed as MGNARF Ändi.
 ```
 
-The Apache license does not grant permission to present a modified version as the official NARF, MGNARF, or MGNARF Ändi project. See `TRADEMARKS.md` for the project name and branding policy.
+The Apache license does not grant permission to present a modified version as the official NARF, MGNARF, or MGNARF Ändi project. See `TRADEMARKS.md`.
 
 > PINKY: Did the checks actually run?  
 > BRAIN: Yes. Keep the evidence, and keep the unverified boundaries visible.
