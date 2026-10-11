@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "mgsystem": {
+    "repository": "miguelkolli/mgsystem",
+    "local_env": "MGSYSTEM_HOME",
+    "runner": "tests/run.py",
+    "ref": "817e694fedbae8dc749fbbfcf271cf1fa93f1881"
+  },
+  "project": {
+    "id": "narf",
+    "name": "NARF",
+    "type": "guardrail"
+  },
+  "repository": {
+    "id": "narf",
+    "url": "https://github.com/miguelkolli/narf.git",
+    "default_branch": "main"
+  },
+  "architecture": {},
+  "verification": {
+    "smoke": [],
+    "health": [],
+    "domains": {}
+  },
+  "quality": {
+    "source_roots": [],
+    "test_roots": [],
+    "excluded_paths": [],
+    "review_file_size_bytes": null
+  },
+  "boundaries": {
+    "forbidden_paths": [],
+    "protected_external_roots": [
+      "/home/mani/koodi/mgsystem"
+    ]
+  },
+  "extensions": {}
+}
