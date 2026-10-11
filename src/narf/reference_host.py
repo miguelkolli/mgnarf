@@ -3,7 +3,7 @@ from __future__ import annotations
 import json, os, threading
 from dataclasses import asdict, replace
 from pathlib import Path
-from .gate import EffectBinding, FrozenState, NARFError, NARFGate, ReceiptStore, canonical_json_digest, sha256_bytes
+from .gate import EffectBinding, FrozenState, NARFError, NARFGate, ReceiptStore, canonical_json, canonical_json_digest, sha256_bytes
 
 class TrustedFileHost:
     def __init__(self, root: str | Path, key: bytes):
@@ -38,7 +38,10 @@ class TrustedFileHost:
         if not isinstance(effect_name, str) or not effect_name or "/" in effect_name or "\\" in effect_name:
             raise NARFError("host: invalid effect name")
 
-        frozen_task = json.loads(json.dumps(task, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False))
+        # Validate the caller's original task against the same strict JSON model
+        # used by NARFGate before making a detached frozen copy. Never coerce a
+        # non-strict Python value into a different JSON task before binding it.
+        frozen_task = json.loads(canonical_json(task))
         frozen_payload = bytes(payload)
         frozen_requirements = tuple(requirements)
         state = FrozenState(
