@@ -188,7 +188,7 @@ class ReceiptStore:
             ):
                 return None
             return payload["evidence"]
-        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError, NARFError):
+        except (OSError, ValueError, TypeError, KeyError, RecursionError, json.JSONDecodeError, NARFError):
             return None
 
 
