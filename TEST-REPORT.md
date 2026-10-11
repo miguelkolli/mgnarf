@@ -140,12 +140,62 @@ This successful manual fixture run does not certify a production host,
 OS sandbox, receipt-history rollback resistance or physical power-loss safety.
 GitHub CI remains a separate unverified boundary.
 
+## Local Codex evidence-audit follow-up — 2026-10-11
+
+At approximately 08:29 Europe/Helsinki, the owner relayed a local Codex
+audit of `/tmp/mgnarf-unix-manual.uCLawh/results`.
+It reported **PASS: no deviations in the 24 recorded cases**.
+
+| Audit item | Reported outcome |
+| --- | --- |
+| Rows bound to the same frozen-plan hash | 24/24 |
+| PASS and protected operation executed | 24/24 |
+| Host unchanged; callback 1; target 1; consumption receipt 1 | 24/24 |
+| Replay denied with NARFError: already consumed | 24/24 |
+| Real/effective/saved UID and GID | [65534, 65534, 65534] in all workers |
+| Supplementary groups / effective capabilities | Empty / zero in all workers |
+| Public traversal/read and candidate-owned staging write/read | Passed in all cases |
+| EACCES denials | 23, errno 13 |
+| EPERM denial | 1, errno 1; private-files chmod-store |
+| Base64-decoded receipt snapshots matching their SHA256 | 144/144 |
+| child.json records matching corresponding evidence rows | 24/24 |
+
+Recorded hashes:
+
+- Frozen plan SHA256:
+  `87c9ac560275862ebdaad6691c8a197d0e9a9090c47b595384ffc3b93bf72ef2`.
+- Gate SHA256:
+  `7dbc72d4cc68321757667d58bc8b2c4df747943707a9cf1d7e03de9e4f0b385b`.
+- Runner SHA256:
+  `f5bc9e5a2b4ddd6969e93df0f64ab32925d4736e4a96957537772d12cf39f400`.
+- Gate Git blob:
+  `41137015f2f89cd1ec97b5f63d0a8a8d746de781`.
+- Fetched harness commit:
+  `61d978ba8ef1ba7b3422da836ba7c865591fd220`.
+
+The assistant compared the relayed gate/runner SHA256 values with its
+publication-matched source copy and confirmed both match. It cannot access
+the owner's local evidence directory; the per-case audit findings above are
+attributed to the relayed local Codex report.
+
+This audit checks preserved evidence's internal consistency. It is not a
+second live test execution. Temporary receipt keys were not archived, so the
+auditor could check snapshot hashes but could not independently recompute
+receipt MACs after fixture teardown. The evidence directory is neither
+cryptographically signed nor externally immutable; the audit does not prove
+it was never changed before inspection.
+
+The measured scope remains a disposable host-owned Unix fixture. Production
+sandboxing, deployment behavior, rollback resistance, power-loss safety and
+GitHub CI are not certified by this result.
+
 ## Remaining limits
 
 - The authoring executor could not exercise distinct-account ACL/UID isolation.
   The subsequent user terminal run reported 24/24 scoped fixture PASS, as
-  recorded above; detailed per-case audit and production-host isolation remain
-  outstanding. Same-UID tests alone do not establish that boundary.
+  recorded above. A subsequent local Codex audit reported no deviations in
+  the preserved per-case evidence; production-host isolation remains unverified.
+  Same-UID tests alone do not establish that boundary.
 - State/revocation updates and the complete synchronous execute_effect call
   require the shared authority lock/transaction described in
   [HOST-CONTRACT.md](HOST-CONTRACT.md). A non-cooperating mutator is outside
