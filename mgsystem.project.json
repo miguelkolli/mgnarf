@@ -4,7 +4,7 @@
     "repository": "miguelkolli/mgsystem",
     "local_env": "MGSYSTEM_HOME",
     "runner": "tests/run.py",
-    "ref": "817e694fedbae8dc749fbbfcf271cf1fa93f1881"
+    "ref": "0d6e0ebf0c4351c71323f644a5fc8692e56d6956"
   },
   "project": {
     "id": "narf",
@@ -16,15 +16,55 @@
     "url": "https://github.com/miguelkolli/narf.git",
     "default_branch": "main"
   },
-  "architecture": {},
+  "architecture": {
+    "reference_runtime": {
+      "enabled": true,
+      "path": "src/narf",
+      "runtime": "python"
+    },
+    "authenticated_receipts": {
+      "enabled": true,
+      "owner": "trusted-host",
+      "authority": "acceptance-evidence"
+    }
+  },
   "verification": {
-    "smoke": [],
+    "smoke": [
+      {
+        "name": "standalone-unit-suite",
+        "type": "command",
+        "command": "PYTHONPATH=src python3 -m unittest discover -s tests -v",
+        "cwd": ".",
+        "timeout_seconds": 120
+      },
+      {
+        "name": "compile-check",
+        "type": "command",
+        "command": "python3 -m compileall -q src tests",
+        "cwd": ".",
+        "timeout_seconds": 120
+      }
+    ],
     "health": [],
-    "domains": {}
+    "domains": {
+      "runtime": [
+        {
+          "name": "standalone-unit-suite",
+          "type": "command",
+          "command": "PYTHONPATH=src python3 -m unittest discover -s tests -v",
+          "cwd": ".",
+          "timeout_seconds": 120
+        }
+      ]
+    }
   },
   "quality": {
-    "source_roots": [],
-    "test_roots": [],
+    "source_roots": [
+      "src"
+    ],
+    "test_roots": [
+      "tests"
+    ],
     "excluded_paths": [],
     "review_file_size_bytes": null
   },
@@ -34,5 +74,11 @@
       "/home/mani/koodi/mgsystem"
     ]
   },
-  "extensions": {}
+  "extensions": {
+    "source_provenance": {
+      "repository": "miguelkolli/mgsystem",
+      "ref": "817e694fedbae8dc749fbbfcf271cf1fa93f1881",
+      "component": "runtime/engine/narf_v3.py"
+    }
+  }
 }
