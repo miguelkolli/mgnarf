@@ -2,31 +2,68 @@
 
 ## PURPOSE
 
-NARF is a standalone repository for the NARF acceptance-gate specification, reference implementation, and verification tests. It is separate from the private MGSystem repository and does not become MGSystem governance authority.
+NARF is a standalone repository for the NARF acceptance-gate specification,
+reference implementation, and verification tests. It is separate from the
+private MGSystem runtime and does not become MGSystem governance authority.
 
 ## SYSTEM BOUNDARIES
 
-Current repository state is foundation-only. No standalone runtime, package, service, deployment, database, or privileged host launcher is established yet.
+The portable reference implementation lives under `src/narf/` and uses only the
+Python standard library. It accepts already-established host bindings and state
+digests; it does not import MGSystem Task Freeze, lifecycle, analytics, deployment
+or project-specific runtime modules.
 
-The repository must not contain MGSystem trusted-host receipt keys, production credentials, private project data, or deployment-owned secret state.
+`ReceiptStore` owns HMAC-authenticated append-only reference receipts. The host
+key and receipt directory are trust-boundary inputs and must remain outside
+candidate/worker control.
 
-Root MGSystem `LAWS.md` remains ecosystem authority. This repository owns only NARF-specific implementation and documentation once separately authorized.
+`NARFGate` freezes task/state/requirement/effect bindings and opens sessions.
+`NARFSession` owns verifier execution, evidence evaluation, final decision,
+revalidation and single-use effect consumption.
+
+The repository must not contain MGSystem trusted-host receipt keys, production
+credentials, private project data, or deployment-owned secret state.
+
+Root MGSystem `LAWS.md` remains ecosystem authority. This repository owns only
+NARF-specific implementation, tests and documentation.
 
 ## INVARIANTS
 
-- NARF must fail closed: missing, stale, invalid, incomplete, revoked, or mismatched evidence must never manufacture PASS.
-- PASS evidence must remain bound to the exact task/candidate and the applicable frozen requirements and policy.
-- A previous PASS must not authorize an effect after relevant state changes; pre-effect revalidation is required by the NARF model.
-- Implementation/worker self-report is not sufficient acceptance evidence.
-- Public/reusable NARF code must not depend on MGSystem private credentials or project-specific state.
-- No public-release or production-readiness claim is valid without its own current verification evidence.
+- NARF fails closed: missing, stale, invalid, incomplete, revoked, mismatched or
+  unauthenticated evidence never manufactures PASS.
+- PASS evidence remains bound to the exact task/candidate and frozen requirements
+  and policy.
+- Coverage is dynamic `N/N`; there is no fixed verifier count.
+- Implementation/worker self-report is not accepted as host verifier evidence.
+- A previous PASS cannot authorize an effect after relevant state changes.
+- Immediate pre-effect revalidation is mandatory.
+- Effect consumption is single-use and replay-resistant in the reference model.
+- Public/reusable NARF code has no dependency on MGSystem private credentials or
+  project-specific state.
+- No public-release, deployment, production-readiness or external-E2E PASS claim
+  is valid without separate current evidence.
 
-Application folder/module structure will follow the implementation boundaries established by a separately authorized runtime task.
+## SOURCE AND TEST ROOTS
+
+- source root: `src/`
+- package: `src/narf/`
+- test root: `tests/`
 
 ## VERIFICATION
 
-At foundation stage there are no NARF runtime source roots or project-local test commands yet.
+Standalone reference verification commands:
 
-Shared MGSystem foundation verification is expected through the MGSystem harness using the `mgsystem.ref` in `mgsystem.project.json` when that runtime is locally available. Standalone NARF runtime verification commands must be added to this document and projected into `mgsystem.project.json` in the same task that introduces the runtime.
+```text
+PYTHONPATH=src python3 -m unittest discover -s tests -v
+python3 -m compileall -q src tests
+```
 
-Do not use this file for task history, speculative redesign, or duplicated state.
+Shared MGSystem verification remains a separate external gate and must be run
+from an applicable MGSystem runtime/worktree. Standalone unit success does not
+substitute for that gate.
+
+## PROVENANCE
+
+The behavioral model was extracted from MGSystem NARF v3 source at
+`817e694fedbae8dc749fbbfcf271cf1fa93f1881`. The standalone implementation is an
+intentional dependency-boundary extraction, not a byte-for-byte runtime copy.
