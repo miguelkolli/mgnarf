@@ -34,6 +34,10 @@ class ConsumptionAuthority:
     def is_reserved(self, token: str) -> bool:
         raise NotImplementedError
 
+    def domain_key(self):
+        """Best-effort identity used to reject duplicate configured domains."""
+        return (type(self).__module__, type(self).__qualname__, id(self))
+
 
 class FileConsumptionAuthority(ConsumptionAuthority):
     """Single-use authority stored outside the receipt rollback domain.
@@ -46,6 +50,9 @@ class FileConsumptionAuthority(ConsumptionAuthority):
     def __init__(self, directory: str | Path):
         self.directory = Path(directory).resolve()
         self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+    def domain_key(self):
+        return ("file", str(self.directory))
 
     def _path(self, token: str) -> Path:
         token = _canonical_uuid(token, "consumption_token")
@@ -109,14 +116,16 @@ class AllOfConsumptionAuthority(ConsumptionAuthority):
             raise NARFError("effect: ConsumptionAuthority values required")
         if len({id(authority) for authority in frozen}) != len(frozen):
             raise NARFError("effect: duplicate consumption authority")
-        file_domains = [
-            authority.directory
-            for authority in frozen
-            if isinstance(authority, FileConsumptionAuthority)
-        ]
-        if len(set(file_domains)) != len(file_domains):
+        try:
+            domain_keys = tuple(authority.domain_key() for authority in frozen)
+        except Exception:
+            raise NARFError("effect: consumption authority domain identity unavailable") from None
+        if len(set(domain_keys)) != len(domain_keys):
             raise NARFError("effect: duplicate consumption authority domain")
         self.authorities = frozen
+
+    def domain_key(self):
+        return ("all-of", tuple(authority.domain_key() for authority in self.authorities))
 
     def reserve(self, token: str) -> None:
         token = _canonical_uuid(token, "consumption_token")

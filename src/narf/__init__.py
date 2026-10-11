@@ -12,6 +12,7 @@ from .gate import (
     canonical_json_digest,
     sha256_bytes,
 )
+from .postgres_authority import PostgresConsumptionAuthority
 from .rollback_guard import (
     AllOfConsumptionAuthority,
     ConsumptionAuthority,
@@ -27,6 +28,7 @@ __all__ = [
     "FrozenState",
     "NARFError",
     "NARFGate",
+    "PostgresConsumptionAuthority",
     "ReceiptStore",
     "Requirement",
     "RollbackProtectedEffectExecutor",
