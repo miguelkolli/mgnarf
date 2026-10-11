@@ -97,10 +97,55 @@ Later PRs added documentation and tests. The 10,000-case run retained
 test-target writes. Repetition of parameterized families is not evidence
 of 10,000 independent attack ideas.
 
+## Local Unix UID/GID follow-up — user terminal run
+
+On 2026-10-11 at approximately 08:25 Europe/Helsinki, the repository owner
+supplied a terminal transcript of a manual sudo run on their Linux machine.
+The detached worktree used the exact harness commit
+[`61d978ba8ef1ba7b3422da836ba7c865591fd220`](https://github.com/miguelkolli/mgnarf/commit/61d978ba8ef1ba7b3422da836ba7c865591fd220)
+from [PR #5](https://github.com/miguelkolli/mgnarf/pull/5).
+
+| Recorded terminal result | Value |
+| --- | --- |
+| Planned cases | 24 |
+| PASS | 24 |
+| Protected operations executed | 24 |
+| Harness exit | 0 |
+| Gate source unchanged | true |
+| Frozen plan unchanged | true |
+| Harness summary.result | PASS |
+
+The expected gate blob was
+`41137015f2f89cd1ec97b5f63d0a8a8d746de781`. The transcript recorded a successful
+interactive sudo invocation, printed the summary twice, and showed disposable
+worktree cleanup. The retained evidence path on that machine is
+`/tmp/mgnarf-unix-manual.uCLawh/results`.
+
+This is **user-reported scoped PASS for the host-owned Unix fixture**, rather
+than another blocked credential-switch attempt. It is separate from the
+34 repository unittest methods and is not added to their count.
+
+The reviewed harness requires UID/GID 65534 (real, effective and saved), no
+supplementary groups, zero effective capabilities, successful candidate-owned
+controls, OS denial of each protected operation, unchanged host data and
+permissions, authenticated receipts and blocked fresh-session replay. These
+criteria explain what its PASS means. The assistant has seen the terminal
+summary, but has not read the 24 per-case evidence files or independently
+audited this local run. The local Python/kernel versions and original-checkout
+status were not independently checked in this follow-up.
+
+The authoring executor and the earlier non-interactive Codex run remain
+historically UNVERIFIED because they lacked credential-switch authority.
+This successful manual fixture run does not certify a production host,
+OS sandbox, receipt-history rollback resistance or physical power-loss safety.
+GitHub CI remains a separate unverified boundary.
+
 ## Remaining limits
 
-- Distinct Unix-account ACL/UID isolation remains UNVERIFIED. This executor
-  rejected setgroups/setuid operations; same-UID results do not replace them.
+- The authoring executor could not exercise distinct-account ACL/UID isolation.
+  The subsequent user terminal run reported 24/24 scoped fixture PASS, as
+  recorded above; detailed per-case audit and production-host isolation remain
+  outstanding. Same-UID tests alone do not establish that boundary.
 - State/revocation updates and the complete synchronous execute_effect call
   require the shared authority lock/transaction described in
   [HOST-CONTRACT.md](HOST-CONTRACT.md). A non-cooperating mutator is outside
