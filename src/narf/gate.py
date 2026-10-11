@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -59,8 +60,40 @@ class EffectBinding:
     execute: Callable[[], object]
 
 
+def _validate_strict_json(value: object) -> None:
+    value_type = type(value)
+    if value is None or value_type is bool or value_type is int:
+        return
+    if value_type is float:
+        if not math.isfinite(value):
+            raise NARFError("value: canonical JSON required")
+        return
+    if value_type is str:
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            raise NARFError("value: canonical JSON required") from None
+        return
+    if value_type is list:
+        for item in value:
+            _validate_strict_json(item)
+        return
+    if value_type is dict:
+        for key, item in value.items():
+            if type(key) is not str:
+                raise NARFError("value: canonical JSON required")
+            try:
+                key.encode("utf-8")
+            except UnicodeEncodeError:
+                raise NARFError("value: canonical JSON required") from None
+            _validate_strict_json(item)
+        return
+    raise NARFError("value: canonical JSON required")
+
+
 def canonical_json(value: object) -> str:
     try:
+        _validate_strict_json(value)
         return json.dumps(
             value,
             sort_keys=True,
@@ -68,7 +101,9 @@ def canonical_json(value: object) -> str:
             ensure_ascii=False,
             allow_nan=False,
         )
-    except (TypeError, ValueError, RecursionError):
+    except NARFError:
+        raise
+    except (TypeError, ValueError, RecursionError, UnicodeError):
         raise NARFError("value: canonical JSON required") from None
 
 
