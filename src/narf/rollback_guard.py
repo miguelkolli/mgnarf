@@ -1,9 +1,10 @@
 """Rollback-protected trusted-host effect execution.
 
-The filesystem receipt store alone is not rollback resistant. This module adds a
-second single-use authority that must live outside the receipt-store rollback
-domain. The authority is reserved before NARF is allowed to enter the external
-effect callback.
+The filesystem receipt store alone is not rollback resistant. This module adds
+single-use consumption authorities that must live outside the receipt-store
+rollback domain. A multi-domain authority can require every independent domain
+to reserve the same token before NARF is allowed to enter the external effect
+callback.
 """
 from __future__ import annotations
 
@@ -24,7 +25,17 @@ def _canonical_uuid(value: str, label: str) -> str:
     return value
 
 
-class FileConsumptionAuthority:
+class ConsumptionAuthority:
+    """Trusted-host single-use authority interface."""
+
+    def reserve(self, token: str) -> None:
+        raise NotImplementedError
+
+    def is_reserved(self, token: str) -> bool:
+        raise NotImplementedError
+
+
+class FileConsumptionAuthority(ConsumptionAuthority):
     """Single-use authority stored outside the receipt rollback domain.
 
     The directory itself is trusted host state. Rollback resistance is obtained
@@ -79,12 +90,54 @@ class FileConsumptionAuthority:
         return os.path.lexists(path)
 
 
+class AllOfConsumptionAuthority(ConsumptionAuthority):
+    """Require every configured authority domain to reserve the token.
+
+    This is deliberately all-of rather than a majority quorum. On first use all
+    domains must durably reserve the token. On replay, any one preserved domain
+    can veto the operation by reporting the token already consumed.
+
+    Partial reservation is never rolled back if a later authority rejects or
+    fails. This intentionally sacrifices availability to keep replay fail-closed.
+    """
+
+    def __init__(self, authorities):
+        if not isinstance(authorities, (tuple, list)) or len(authorities) < 2:
+            raise NARFError("effect: at least two consumption authorities required")
+        frozen = tuple(authorities)
+        if any(not isinstance(authority, ConsumptionAuthority) for authority in frozen):
+            raise NARFError("effect: ConsumptionAuthority values required")
+        if len({id(authority) for authority in frozen}) != len(frozen):
+            raise NARFError("effect: duplicate consumption authority")
+        file_domains = [
+            authority.directory
+            for authority in frozen
+            if isinstance(authority, FileConsumptionAuthority)
+        ]
+        if len(set(file_domains)) != len(file_domains):
+            raise NARFError("effect: duplicate consumption authority domain")
+        self.authorities = frozen
+
+    def reserve(self, token: str) -> None:
+        token = _canonical_uuid(token, "consumption_token")
+        for authority in self.authorities:
+            authority.reserve(token)
+
+    def is_reserved(self, token: str) -> bool:
+        token = _canonical_uuid(token, "consumption_token")
+        return any(authority.is_reserved(token) for authority in self.authorities)
+
+    def reservation_states(self, token: str) -> tuple[bool, ...]:
+        token = _canonical_uuid(token, "consumption_token")
+        return tuple(authority.is_reserved(token) for authority in self.authorities)
+
+
 class RollbackProtectedEffectExecutor:
     """Reserve external single-use authority before entering NARF's effect."""
 
-    def __init__(self, authority: FileConsumptionAuthority):
-        if type(authority) is not FileConsumptionAuthority:
-            raise NARFError("effect: FileConsumptionAuthority required")
+    def __init__(self, authority: ConsumptionAuthority):
+        if not isinstance(authority, ConsumptionAuthority):
+            raise NARFError("effect: ConsumptionAuthority required")
         self.authority = authority
 
     def execute(self, contract_id: str, session):

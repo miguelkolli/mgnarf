@@ -4,7 +4,11 @@ import unittest
 from uuid import uuid4
 
 from narf import NARFError
-from narf.rollback_guard import FileConsumptionAuthority, RollbackProtectedEffectExecutor
+from narf.rollback_guard import (
+    AllOfConsumptionAuthority,
+    FileConsumptionAuthority,
+    RollbackProtectedEffectExecutor,
+)
 
 
 class FakeSession:
@@ -72,6 +76,93 @@ class RollbackGuardTests(unittest.TestCase):
             self.assertTrue(authority.is_reserved(token))
 
             second = FakeSession()
+            with self.assertRaisesRegex(NARFError, "already consumed"):
+                executor.execute(token, second)
+            self.assertEqual(second.effect_calls, 0)
+
+    def test_all_of_requires_at_least_two_distinct_authorities(self):
+        with tempfile.TemporaryDirectory() as name:
+            first = FileConsumptionAuthority(Path(name) / "a")
+            with self.assertRaisesRegex(NARFError, "at least two"):
+                AllOfConsumptionAuthority([first])
+            with self.assertRaisesRegex(NARFError, "duplicate consumption authority$"):
+                AllOfConsumptionAuthority([first, first])
+
+    def test_all_of_rejects_same_file_domain_through_distinct_instances(self):
+        with tempfile.TemporaryDirectory() as name:
+            path = Path(name) / "same"
+            first = FileConsumptionAuthority(path)
+            second = FileConsumptionAuthority(path)
+            with self.assertRaisesRegex(NARFError, "duplicate consumption authority domain"):
+                AllOfConsumptionAuthority([first, second])
+
+    def test_all_of_first_use_reserves_every_domain(self):
+        with tempfile.TemporaryDirectory() as name:
+            token = str(uuid4())
+            authorities = [
+                FileConsumptionAuthority(Path(name) / label)
+                for label in ("a", "b", "c")
+            ]
+            combined = AllOfConsumptionAuthority(authorities)
+            combined.reserve(token)
+            self.assertEqual(combined.reservation_states(token), (True, True, True))
+
+    def test_all_of_one_domain_rollback_still_blocks(self):
+        with tempfile.TemporaryDirectory() as name:
+            token = str(uuid4())
+            authorities = [
+                FileConsumptionAuthority(Path(name) / label)
+                for label in ("a", "b", "c")
+            ]
+            combined = AllOfConsumptionAuthority(authorities)
+            combined.reserve(token)
+            authorities[0]._path(token).unlink()
+            with self.assertRaisesRegex(NARFError, "already consumed"):
+                combined.reserve(token)
+            self.assertTrue(combined.is_reserved(token))
+
+    def test_all_of_two_domain_rollback_still_blocks(self):
+        with tempfile.TemporaryDirectory() as name:
+            token = str(uuid4())
+            authorities = [
+                FileConsumptionAuthority(Path(name) / label)
+                for label in ("a", "b", "c")
+            ]
+            combined = AllOfConsumptionAuthority(authorities)
+            combined.reserve(token)
+            authorities[0]._path(token).unlink()
+            authorities[1]._path(token).unlink()
+            with self.assertRaisesRegex(NARFError, "already consumed"):
+                combined.reserve(token)
+            self.assertEqual(combined.reservation_states(token), (True, True, True))
+
+    def test_all_of_all_domain_rollback_exposes_remaining_boundary(self):
+        with tempfile.TemporaryDirectory() as name:
+            token = str(uuid4())
+            authorities = [
+                FileConsumptionAuthority(Path(name) / label)
+                for label in ("a", "b", "c")
+            ]
+            combined = AllOfConsumptionAuthority(authorities)
+            combined.reserve(token)
+            for authority in authorities:
+                authority._path(token).unlink()
+            combined.reserve(token)
+            self.assertEqual(combined.reservation_states(token), (True, True, True))
+
+    def test_executor_accepts_all_of_authority_and_blocks_replay(self):
+        with tempfile.TemporaryDirectory() as name:
+            token = str(uuid4())
+            authorities = [
+                FileConsumptionAuthority(Path(name) / label)
+                for label in ("a", "b", "c")
+            ]
+            executor = RollbackProtectedEffectExecutor(AllOfConsumptionAuthority(authorities))
+            first = FakeSession()
+            second = FakeSession()
+
+            self.assertEqual(executor.execute(token, first), "effect")
+            authorities[0]._path(token).unlink()
             with self.assertRaisesRegex(NARFError, "already consumed"):
                 executor.execute(token, second)
             self.assertEqual(second.effect_calls, 0)
