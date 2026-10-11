@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    name: Publish exact verified beta tag
+    name: Verify pinned v1.60 beta release
     if: >-
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.event == 'push' &&
@@ -19,38 +19,45 @@ jobs:
     timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+      VERIFIED_MAIN_SHA: ${{ github.event.workflow_run.head_sha }}
       RELEASE_TAG: v1.60-beta.1
+      PINNED_RELEASE_SHA: c87961eaade3394c57fbc4de954e15e4921902d0
     steps:
       - name: Checkout exact verified main revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.RELEASE_SHA }}
+          ref: ${{ env.VERIFIED_MAIN_SHA }}
           persist-credentials: false
           fetch-depth: 1
-      - name: Verify release source binding
+      - name: Verify workflow source binding
         run: |
-          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD)" = "$VERIFIED_MAIN_SHA"
           test -f RELEASE-v1.60-beta.1.md
-      - name: Create or verify immutable beta release
+      - name: Create once or verify pinned beta release
         shell: bash
         run: |
           set -euo pipefail
           if existing_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha' 2>/dev/null)"; then
-            if [ "$existing_sha" != "$RELEASE_SHA" ]; then
-              echo "Existing ${RELEASE_TAG} points to ${existing_sha}, expected ${RELEASE_SHA}; refusing retarget." >&2
+            if [ "$existing_sha" != "$PINNED_RELEASE_SHA" ]; then
+              echo "Existing ${RELEASE_TAG} points to ${existing_sha}, expected pinned ${PINNED_RELEASE_SHA}; refusing retarget or acceptance." >&2
               exit 1
             fi
-            gh release view "$RELEASE_TAG" >/dev/null
-            echo "${RELEASE_TAG} already exists on the exact verified SHA; leaving it unchanged."
+            prerelease="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.prerelease')"
+            test "$prerelease" = "true"
+            echo "${RELEASE_TAG} remains pinned to ${PINNED_RELEASE_SHA}; current verified main is ${VERIFIED_MAIN_SHA}."
             exit 0
           fi
 
+          if [ "$VERIFIED_MAIN_SHA" != "$PINNED_RELEASE_SHA" ]; then
+            echo "${RELEASE_TAG} is missing, but current verified main ${VERIFIED_MAIN_SHA} is not the pinned release source ${PINNED_RELEASE_SHA}; refusing to recreate from a later commit." >&2
+            exit 1
+          fi
+
           gh release create "$RELEASE_TAG" \
-            --target "$RELEASE_SHA" \
+            --target "$PINNED_RELEASE_SHA" \
             --title "$RELEASE_TAG" \
             --prerelease \
             --notes-file RELEASE-v1.60-beta.1.md
 
           created_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha')"
-          test "$created_sha" = "$RELEASE_SHA"
+          test "$created_sha" = "$PINNED_RELEASE_SHA"
