@@ -38,6 +38,8 @@ jobs:
           printf 'candidate_sha=%s\n' "$actual"
 
       - name: Run fresh v1.70 whole-chain adversarial suite
+        # Layer A/B defines fence_sequence as non-negative. The malformed-token
+        # regression therefore uses -1; PostgreSQL Layer C separately issues >0.
         shell: bash
         run: |
           mkdir -p "$CI_EVIDENCE"
