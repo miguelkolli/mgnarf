@@ -10,6 +10,7 @@ fence sequence in the same transaction that commits the effect.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from urllib.parse import unquote, urlsplit
 
@@ -39,6 +40,12 @@ def _scope(value: object) -> str:
     return value
 
 
+def _advisory_key(scope: str) -> int:
+    """Stable signed int64 key for one fence scope."""
+    raw = hashlib.sha256(scope.encode("utf-8")).digest()[:8]
+    return int.from_bytes(raw, "big", signed=True)
+
+
 def _postgres_domain_identity(dsn: str) -> tuple[str, str, int, str]:
     if not isinstance(dsn, str) or not dsn:
         raise NARFError("fence: PostgreSQL DSN required")
@@ -66,6 +73,10 @@ def _connect(dsn: str, timeout: int):
         raise NARFError("fence: PostgreSQL service unavailable") from None
 
 
+def _lock_scope(cursor, scope: str) -> None:
+    cursor.execute("SELECT pg_advisory_xact_lock(%s)", (_advisory_key(scope),))
+
+
 def _validate_token(token: object) -> FenceToken:
     if type(token) is not FenceToken:
         raise NARFError("fence target: FenceToken required")
@@ -89,6 +100,10 @@ class PostgresFencingAuthority(FencingAuthority):
     have SELECT on the scope row, UPDATE only on ``fence_sequence``, and
     INSERT/SELECT on the issuance ledger. It should not be able to change
     ``authority_revision``.
+
+    Issuance obtains a transaction-scoped PostgreSQL advisory lock derived from
+    ``fence_scope_id`` before reading/updating the row. The control plane and
+    enforcing target use the same lock key.
     """
 
     def __init__(
@@ -137,6 +152,7 @@ class PostgresFencingAuthority(FencingAuthority):
         try:
             with connection:
                 with connection.cursor() as cursor:
+                    _lock_scope(cursor, scope)
                     cursor.execute(
                         f"SELECT authority_revision, fence_sequence "
                         f"FROM {self.scope_table} WHERE scope_id = %s FOR UPDATE",
@@ -198,8 +214,8 @@ class PostgresFenceControlPlane:
     """Advance the authority generation independently from effect issuance.
 
     The control-plane role should be allowed to UPDATE ``authority_revision`` but
-    not ``fence_sequence`` or effect rows. Advancing the revision serializes on
-    the same scope row used by issuance and target commit.
+    not ``fence_sequence`` or effect rows. Advancing the revision obtains the
+    same transaction-scoped advisory lock used by issuance and target commit.
     """
 
     def __init__(
@@ -259,6 +275,7 @@ class PostgresFenceControlPlane:
         try:
             with connection:
                 with connection.cursor() as cursor:
+                    _lock_scope(cursor, scope)
                     cursor.execute(
                         f"SELECT authority_revision FROM {self.scope_table} "
                         "WHERE scope_id = %s FOR UPDATE",
@@ -292,10 +309,12 @@ class PostgresFenceControlPlane:
 class PostgresFencedTarget:
     """Reference target that enforces fence validity at PostgreSQL commit time.
 
-    The target takes a SHARE row lock on the same scope row that issuance and
-    authority transitions update. It then validates current revision, latest
-    sequence, and the exact issuance record before inserting the external effect
-    row in the same transaction.
+    The target obtains the same transaction-scoped advisory lock used by fence
+    issuance and authority transitions. It then validates current revision,
+    latest sequence, and the exact issuance record before inserting the external
+    effect row in that same transaction. The target needs SELECT on scope and
+    issuance state plus INSERT on the effect table; no scope UPDATE privilege is
+    required merely to participate in serialization.
     """
 
     def __init__(
@@ -343,9 +362,10 @@ class PostgresFencedTarget:
         try:
             with connection:
                 with connection.cursor() as cursor:
+                    _lock_scope(cursor, self.fence_scope_id)
                     cursor.execute(
                         f"SELECT authority_revision, fence_sequence "
-                        f"FROM {self.scope_table} WHERE scope_id = %s FOR SHARE",
+                        f"FROM {self.scope_table} WHERE scope_id = %s",
                         (self.fence_scope_id,),
                     )
                     scope_row = cursor.fetchone()
