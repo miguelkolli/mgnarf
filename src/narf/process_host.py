@@ -58,6 +58,11 @@ class CandidateFileHost:
 
     def _read_candidate(self) -> bytes:
         flags = os.O_RDONLY
+        if hasattr(os, "O_NONBLOCK"):
+            # A worker-controlled path may be replaced with a FIFO after verification.
+            # Opening it in blocking mode while the authority lock is held can freeze
+            # commit() and prevent revoke() from acquiring the same lock.
+            flags |= os.O_NONBLOCK
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         elif self.candidate_path.is_symlink():

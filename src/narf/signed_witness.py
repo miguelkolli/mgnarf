@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 import secrets
+import time
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
@@ -21,6 +22,7 @@ from .rollback_guard import ConsumptionAuthority, _canonical_uuid
 _NONCE_RE = re.compile(r"[0-9a-f]{64}")
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _MAX_RESPONSE_BYTES = 65536
+_READ_CHUNK_BYTES = 4096
 
 
 def _canonical_bytes(value) -> bytes:
@@ -69,6 +71,40 @@ def _normalize_base_url(value: str, allow_insecure_http: bool) -> tuple[str, tup
     effective_port = port or (443 if parsed.scheme == "https" else 80)
     base = value.rstrip("/")
     return base, (parsed.scheme, parsed.hostname.lower(), effective_port)
+
+
+def _remaining_seconds(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("signed witness deadline exceeded")
+    return remaining
+
+
+def _set_stream_timeout(stream, timeout_seconds: float) -> None:
+    """Tighten urllib's underlying socket timeout when the socket is exposed."""
+    fp = getattr(stream, "fp", None)
+    raw = getattr(fp, "raw", None)
+    sock = getattr(raw, "_sock", None)
+    if sock is None:
+        sock = getattr(fp, "_sock", None)
+    if sock is not None:
+        sock.settimeout(timeout_seconds)
+
+
+def _read_with_deadline(stream, deadline: float) -> bytes:
+    data = bytearray()
+    read_once = getattr(stream, "read1", None)
+    if not callable(read_once):
+        read_once = stream.read
+    while len(data) <= _MAX_RESPONSE_BYTES:
+        remaining = _remaining_seconds(deadline)
+        _set_stream_timeout(stream, remaining)
+        size = min(_READ_CHUNK_BYTES, _MAX_RESPONSE_BYTES + 1 - len(data))
+        chunk = read_once(size)
+        if not chunk:
+            break
+        data.extend(chunk)
+    return bytes(data)
 
 
 class SignedWitnessAuthority(ConsumptionAuthority):
@@ -137,16 +173,21 @@ class SignedWitnessAuthority(ConsumptionAuthority):
             headers={"Content-Type": "application/json", "Accept": "application/json"},
             method="POST",
         )
+        deadline = time.monotonic() + self.timeout_seconds
         try:
             try:
-                response = urllib.request.urlopen(request, timeout=self.timeout_seconds)
-                status = response.status
-                raw = response.read(_MAX_RESPONSE_BYTES + 1)
-                response.close()
+                response = urllib.request.urlopen(request, timeout=_remaining_seconds(deadline))
+                try:
+                    status = response.status
+                    raw = _read_with_deadline(response, deadline)
+                finally:
+                    response.close()
             except urllib.error.HTTPError as error:
-                status = error.code
-                raw = error.read(_MAX_RESPONSE_BYTES + 1)
-                error.close()
+                try:
+                    status = error.code
+                    raw = _read_with_deadline(error, deadline)
+                finally:
+                    error.close()
         except Exception:
             raise NARFError("effect: signed witness unavailable") from None
 
