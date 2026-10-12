@@ -574,6 +574,7 @@ class NARFSession:
         return value
 
     def _current_state_error(self) -> str | None:
+        identity_error = self._identity_state_error()
         if self._revoked():
             return "REVOKED"
         if self.__store.load(self.__contract["run_id"]) != self.__contract:
@@ -589,7 +590,7 @@ class NARFSession:
             return "GOALPOST_CHANGED"
         if current.policy_sha256 != frozen["policy_sha256"]:
             return "POLICY_CHANGED"
-        return self._identity_state_error()
+        return identity_error
 
     def execute(self, requirement_id: str) -> dict:
         if self.__closed:
