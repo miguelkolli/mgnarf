@@ -22,11 +22,20 @@ jobs:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONPATH: src
       CI_EVIDENCE: /tmp/narf-v170-whole-chain
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
-      - name: Checkout exact revision
+      - name: Checkout exact candidate revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ env.EXPECTED_SHA }}
+
+      - name: Require exact candidate checkout
+        shell: bash
+        run: |
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          printf 'candidate_sha=%s\n' "$actual"
 
       - name: Run fresh v1.70 whole-chain adversarial suite
         shell: bash
@@ -37,18 +46,24 @@ jobs:
           from pathlib import Path
 
           evidence = Path(os.environ["CI_EVIDENCE"])
-          suite = unittest.defaultTestLoader.loadTestsFromName("test_v170_whole_chain", module=None)
-          if suite.countTestCases() == 0:
-              suite = unittest.defaultTestLoader.discover("tests", pattern="test_v170_whole_chain.py")
+          suite = unittest.defaultTestLoader.discover(
+              "tests", pattern="test_v170_whole_chain.py"
+          )
           result = unittest.TextTestRunner(verbosity=2).run(suite)
+          actual_sha = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], text=True
+          ).strip()
+          expected_sha = os.environ["EXPECTED_SHA"]
           passed = (
-              result.testsRun == 10
+              actual_sha == expected_sha
+              and result.testsRun == 10
               and len(result.failures) == 0
               and len(result.errors) == 0
               and len(result.skipped) == 0
           )
           summary = {
-              "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "commit": actual_sha,
+              "expected_commit": expected_sha,
               "tests": result.testsRun,
               "failures": len(result.failures),
               "errors": len(result.errors),
