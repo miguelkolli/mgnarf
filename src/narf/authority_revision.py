@@ -4,6 +4,11 @@ Snapshot identity checks cannot detect a change that happens and is restored
 entirely between two trusted-host probes. This opt-in host wrapper binds a
 rollback-resistant monotonic authority revision to the NARF contract using a
 separate HMAC-authenticated receipt and rechecks it throughout the session.
+
+Ordering-enabled contracts preserve their authenticated v3 stage-order binding
+through this wrapper. The authority-revision receipt is versioned separately so
+legacy v2 identity contracts keep their historical binding schema while ordered
+v3 contracts additionally bind the frozen stage-order digest.
 """
 from __future__ import annotations
 
@@ -15,11 +20,11 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from .gate import (
     EffectBinding,
     NARFError,
-    NARFGate,
     ReceiptStore,
     canonical_json,
     canonical_json_digest,
 )
+from .stage_order import NARFGate
 
 
 @dataclass(frozen=True)
@@ -106,10 +111,10 @@ class AuthorityRevisionGate:
     must increase whenever any identity-authority fact can change, must never be
     reused for a different authority state, and must itself resist rollback.
 
-    The wrapper keeps the core NARF v2 identity contract unchanged. A separate
-    authenticated binding receipt ties the core contract to the revision,
-    actor-map digest, and identity-policy digest. Missing or invalid binding
-    evidence fails closed before verifier evidence can run.
+    Legacy identity-only contracts retain core NARF v2 semantics and a version-1
+    authority binding. Supplying ``stage_order`` opts into core NARF v3; the
+    version-2 authority binding then authenticates the stage-order digest as an
+    additional no-downgrade condition.
     """
 
     def __init__(self, receipt_store: ReceiptStore, authority_probe: Callable[[], AuthoritySnapshot]):
@@ -143,6 +148,7 @@ class AuthorityRevisionGate:
         effect_version: str,
         state,
         identity_policy: dict,
+        stage_order: list[str] | None = None,
     ) -> str:
         if type(identity_policy) is not dict or type(identity_policy.get("actors")) is not dict:
             raise NARFError("authority: identity policy with actors required")
@@ -162,36 +168,51 @@ class AuthorityRevisionGate:
             effect_version=effect_version,
             state=state,
             identity_policy=identity_policy,
+            stage_order=stage_order,
         )
 
         contract = self.__store.load(contract_id)
+        ordered = stage_order is not None
+        expected_contract_version = 3 if ordered else 2
         if (
             not isinstance(contract, dict)
             or contract.get("evidence_type") != "narf.contract"
-            or contract.get("evidence_version") != 2
+            or contract.get("evidence_version") != expected_contract_version
+            or contract.get("producer") != f"host/narf-contract-v{expected_contract_version}"
             or contract.get("identity_policy_sha256") != policy_sha256
         ):
             raise NARFError("authority: identity-enabled contract required")
+        if ordered and (
+            type(contract.get("stage_order")) is not list
+            or type(contract.get("stage_order_sha256")) is not str
+            or canonical_json_digest(contract["stage_order"]) != contract["stage_order_sha256"]
+        ):
+            raise NARFError("authority: ordered contract binding required")
 
         binding_id = _binding_id(contract_id)
-        self.__store.save(
-            {
-                "evidence_type": "narf.authority-revision-binding",
-                "evidence_version": 1,
-                "producer": "host/narf-authority-revision-binding-v1",
-                "run_id": binding_id,
-                "contract_id": contract_id,
-                "authority_revision": snapshot.revision,
-                "actors_sha256": actors_sha256,
-                "identity_policy_sha256": policy_sha256,
-            }
-        )
+        binding_version = 2 if ordered else 1
+        evidence = {
+            "evidence_type": "narf.authority-revision-binding",
+            "evidence_version": binding_version,
+            "producer": f"host/narf-authority-revision-binding-v{binding_version}",
+            "run_id": binding_id,
+            "contract_id": contract_id,
+            "authority_revision": snapshot.revision,
+            "actors_sha256": actors_sha256,
+            "identity_policy_sha256": policy_sha256,
+        }
+        if ordered:
+            evidence["stage_order_sha256"] = contract["stage_order_sha256"]
+        self.__store.save(evidence)
         return contract_id
 
     def _load_binding(self, contract_id: str) -> tuple[dict, dict]:
         contract_id = _canonical_uuid(contract_id, "contract_id")
         binding_id = _binding_id(contract_id)
         binding = self.__store.load(binding_id)
+        if not isinstance(binding, dict) or binding.get("evidence_version") not in (1, 2):
+            raise NARFError("authority: authenticated revision binding required")
+        binding_version = binding["evidence_version"]
         expected_fields = {
             "evidence_type",
             "evidence_version",
@@ -202,12 +223,12 @@ class AuthorityRevisionGate:
             "actors_sha256",
             "identity_policy_sha256",
         }
+        if binding_version == 2:
+            expected_fields.add("stage_order_sha256")
         if (
-            not isinstance(binding, dict)
-            or set(binding) != expected_fields
+            set(binding) != expected_fields
             or binding.get("evidence_type") != "narf.authority-revision-binding"
-            or binding.get("evidence_version") != 1
-            or binding.get("producer") != "host/narf-authority-revision-binding-v1"
+            or binding.get("producer") != f"host/narf-authority-revision-binding-v{binding_version}"
             or binding.get("run_id") != binding_id
             or binding.get("contract_id") != contract_id
             or type(binding.get("authority_revision")) is not int
@@ -216,11 +237,12 @@ class AuthorityRevisionGate:
             raise NARFError("authority: authenticated revision binding required")
 
         contract = self.__store.load(contract_id)
+        contract_version = 3 if binding_version == 2 else 2
         if (
             not isinstance(contract, dict)
             or contract.get("evidence_type") != "narf.contract"
-            or contract.get("evidence_version") != 2
-            or contract.get("producer") != "host/narf-contract-v2"
+            or contract.get("evidence_version") != contract_version
+            or contract.get("producer") != f"host/narf-contract-v{contract_version}"
             or type(contract.get("identity_policy")) is not dict
             or type(contract["identity_policy"].get("actors")) is not dict
             or contract.get("identity_policy_sha256") != binding.get("identity_policy_sha256")
@@ -228,6 +250,13 @@ class AuthorityRevisionGate:
             != binding.get("actors_sha256")
         ):
             raise NARFError("authority: revision binding does not match contract")
+        if binding_version == 2 and (
+            type(contract.get("stage_order")) is not list
+            or type(contract.get("stage_order_sha256")) is not str
+            or canonical_json_digest(contract["stage_order"]) != contract["stage_order_sha256"]
+            or binding.get("stage_order_sha256") != contract["stage_order_sha256"]
+        ):
+            raise NARFError("authority: revision binding does not match ordered contract")
         return binding, contract
 
     def _require_current(self, binding: dict) -> AuthoritySnapshot:
