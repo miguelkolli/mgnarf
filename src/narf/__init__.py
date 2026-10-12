@@ -1,6 +1,14 @@
 """Public NARF reference implementation."""
 
 from .authority_revision import AuthorityRevisionGate, AuthorityRevisionSession, AuthoritySnapshot
+from .fenced_effect import (
+    FenceToken,
+    FencedEffectBinding,
+    FencedOperationEffectExecutor,
+    FencedOperationGate,
+    FencedOperationSession,
+    FencingAuthority,
+)
 from .gate import (
     EffectBinding,
     FrozenState,
@@ -30,6 +38,12 @@ __all__ = [
     "AuthoritySnapshot",
     "ConsumptionAuthority",
     "EffectBinding",
+    "FenceToken",
+    "FencedEffectBinding",
+    "FencedOperationEffectExecutor",
+    "FencedOperationGate",
+    "FencedOperationSession",
+    "FencingAuthority",
     "FileConsumptionAuthority",
     "FrozenState",
     "NARFError",
