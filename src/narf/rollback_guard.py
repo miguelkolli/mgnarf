@@ -25,6 +25,26 @@ def _canonical_uuid(value: str, label: str) -> str:
     return value
 
 
+def _session_bound_contract_id(session, supplied_contract_id: str) -> str:
+    """Return the contract bound inside a real NARFSession.
+
+    NARFSession intentionally keeps its frozen contract private. The rollback
+    compatibility executor lives in the same trusted package and must not let a
+    caller-selected UUID choose the external single-use token. Test doubles and
+    legacy structural sessions that do not expose NARFSession's frozen contract
+    keep the historical supplied-token behavior; real NARF sessions are bound.
+    """
+    contract = getattr(session, "_NARFSession__contract", None)
+    if contract is None:
+        return supplied_contract_id
+    if not isinstance(contract, dict):
+        raise NARFError("effect: session contract binding unavailable")
+    bound = _canonical_uuid(contract.get("run_id"), "session_contract_id")
+    if bound != supplied_contract_id:
+        raise NARFError("effect: contract/session mismatch")
+    return bound
+
+
 class ConsumptionAuthority:
     """Trusted-host single-use authority interface."""
 
@@ -150,7 +170,8 @@ class RollbackProtectedEffectExecutor:
         self.authority = authority
 
     def execute(self, contract_id: str, session):
-        contract_id = _canonical_uuid(contract_id, "contract_id")
+        supplied_contract_id = _canonical_uuid(contract_id, "contract_id")
+        contract_id = _session_bound_contract_id(session, supplied_contract_id)
         try:
             decision = session.finalize()
         except Exception as error:
