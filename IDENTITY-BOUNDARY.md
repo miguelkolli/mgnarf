@@ -93,6 +93,16 @@ verifier:tests.verifier_profile != verifier:security.verifier_profile
 
 The runtime must fail closed when it cannot establish a required identity property.
 
+For identity-enabled sessions, an observed identity, binding, authority, or
+verifier-profile error becomes sticky once that session already contains verifier
+evidence or a decision. Restoring the previous values does not resurrect the
+old authorization. Fresh verification requires a fresh session.
+
+This sticky rule applies only to drift that NARF actually observes. A change and
+restore that happens entirely between trusted-host probes is not detectable by
+snapshot comparison alone; hosts that need that guarantee must provide a
+monotonic authority revision or equivalent serialized authority mechanism.
+
 ## 4. Trust boundary
 
 Identity provenance is host-owned.
@@ -206,7 +216,10 @@ Before the feature can be called PASS, tests must cover at least these cases:
 15. different principals sharing one verifier profile remain allowed without a profile-separation rule;
 16. the same model and prompts under different agent IDs fail a distinct-profile rule;
 17. distinct-profile policy requires authenticated, complete profile provenance;
-18. a frozen profile change before verification, during verification, or before effect blocks authorization.
+18. a frozen profile change before verification, during verification, or before effect blocks authorization;
+19. observed principal drift after PASS remains BLOCKED after values are restored;
+20. observed verifier-profile drift after PASS remains BLOCKED after values are restored;
+21. observed drift after partial evidence prevents that session from completing with old evidence, while a fresh session may verify again after restoration.
 
 ## 10. Backward compatibility
 

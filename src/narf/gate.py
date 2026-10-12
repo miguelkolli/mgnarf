@@ -485,6 +485,7 @@ class NARFSession:
         self.__closed = False
         self.__effect_used = False
         self.__inhibitors: list[str] = []
+        self.__identity_stale: str | None = None
 
     def _identity_context(self) -> dict:
         if self.__contract["evidence_version"] == 1:
@@ -535,6 +536,16 @@ class NARFSession:
             return "IDENTITY_UNAVAILABLE"
         return None
 
+    def _identity_state_error(self) -> str | None:
+        if self.__contract["evidence_version"] == 1:
+            return None
+        if self.__identity_stale is not None:
+            return self.__identity_stale
+        error = self._identity_error()
+        if error is not None and (self.__runs or self.__decision is not None):
+            self.__identity_stale = error
+        return error
+
     @property
     def session_id(self) -> str:
         return self.__session_id
@@ -578,7 +589,7 @@ class NARFSession:
             return "GOALPOST_CHANGED"
         if current.policy_sha256 != frozen["policy_sha256"]:
             return "POLICY_CHANGED"
-        return self._identity_error()
+        return self._identity_state_error()
 
     def execute(self, requirement_id: str) -> dict:
         if self.__closed:

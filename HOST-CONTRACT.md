@@ -65,6 +65,12 @@ contract/session-bound evidence; it cannot authenticate a human or detect a host
 adapter that blindly reuses an old external approval. Authority withdrawal must
 reach the host's revocation probe or inhibitor path.
 
+Once an identity-enabled session already contains verifier evidence or a
+decision, any identity/profile/binding error that NARF observes permanently
+stales that session's existing authorization. Restoring the old values does not
+make its old evidence or decision usable again; the host must open a fresh
+session and produce fresh verification evidence.
+
 Identity and profile changes must participate in the same authority lock or
 transaction as state/revocation changes and the complete `execute_effect()`
 call. Probes must read that protected authority. Snapshot comparisons cannot
