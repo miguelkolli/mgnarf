@@ -25,15 +25,15 @@ NARF is a standalone fail-closed acceptance gate for AI-assisted and automated w
 
 It has no required parent framework, private repository, workspace variable, external governance runtime or project harness. The core reference gate uses the Python standard library. Optional authority adapters add dependencies only for their own measured boundary.
 
-## Status: beta reference implementation — v1.60 RC1 freeze
+## Status: beta reference implementation — v1.60 RC2 track
 
-NARF is in the `v1.60-rc1` release-freeze track. **RC1 is not considered published until an immutable tag points to an exact merged `main` commit whose required aggregate checks have succeeded.** Until that tag exists, the published release remains `v1.60-beta.1`.
+`v1.60-rc1` is published as an immutable prerelease pinned to its verified release commit. Current `main` is in the `v1.60-rc2` hardening track after a blind post-RC1 red-team pass reproduced three issues and confirmed a fourth canonical-task boundary already fixed in RC1. **RC2 is publishable only when an immutable tag points to the exact merged `main` commit whose required aggregate checks have succeeded.**
 
-The merge-required reference gate now covers repository tests and compilation, strict canonical task binding, distinct UID/GID isolation, trusted-host/untrusted-worker process separation, crash persistence, filesystem rollback characterization, rollback hardening, multi-domain fencing, PostgreSQL consumption authority, Ed25519 signed witness fencing, stable operation-ID binding, high-fanout same-operation races, ambiguous durable-reservation outcomes, and the strict trusted reference-host transition. A required boundary that fails, skips or is cancelled prevents the aggregate required check from succeeding.
+The merge-required reference gate covers repository tests and compilation, strict canonical task binding, distinct UID/GID isolation, trusted-host/untrusted-worker process separation, crash persistence, filesystem rollback characterization, rollback hardening, multi-domain fencing, PostgreSQL consumption authority, Ed25519 signed witness fencing, stable operation-ID binding, high-fanout same-operation races, ambiguous durable-reservation outcomes, and the strict trusted reference-host transition. A required boundary that fails, skips or is cancelled prevents the aggregate required check from succeeding.
 
 Additional focused workflows retain deterministic evidence for canonical/receipt fuzzing and integration fault injection. A green limitation witness means the documented limitation was reproduced exactly; it does not relabel that limitation as a security PASS.
 
-The current release-candidate threat model and measured boundary are summarized in [TRUST-BOUNDARY-AUDIT-v1.60.md](TRUST-BOUNDARY-AUDIT-v1.60.md). RC1 release notes are in [RELEASE-v1.60-rc1.md](RELEASE-v1.60-rc1.md).
+The current release-candidate threat model and measured boundary are summarized in [TRUST-BOUNDARY-AUDIT-v1.60.md](TRUST-BOUNDARY-AUDIT-v1.60.md). RC1 remains documented in [RELEASE-v1.60-rc1.md](RELEASE-v1.60-rc1.md); the post-RC1 adversarial follow-up is in [TEST-REPORT-v1.60-rc1-redteam.md](TEST-REPORT-v1.60-rc1-redteam.md), and RC2 scope is in [RELEASE-v1.60-rc2.md](RELEASE-v1.60-rc2.md).
 
 Rollback claims remain deliberately scoped. The filesystem receipt store is **not** rollback resistant. Hardened paths block replay while at least one independent consumption-authority history survives. If privileged operators can rewind the signed witness, PostgreSQL ledger and every other preserving authority history together, replay can return; that remains an explicit `LIMITATION_CONFIRMED` boundary.
 
@@ -96,8 +96,10 @@ These are measured reference boundaries, not an independent security certificati
 - [REFERENCE-HOST.md](REFERENCE-HOST.md) and [PROCESS-BOUNDARY.md](PROCESS-BOUNDARY.md) — trusted-host examples.
 - [ROLLBACK-BOUNDARY.md](ROLLBACK-BOUNDARY.md), [ROLLBACK-HARDENING.md](ROLLBACK-HARDENING.md) and [MULTIDOMAIN-FENCING.md](MULTIDOMAIN-FENCING.md) — measured rollback boundaries.
 - [POSTGRES-AUTHORITY.md](POSTGRES-AUTHORITY.md) — PostgreSQL authority boundary and limits.
-- [TRUST-BOUNDARY-AUDIT-v1.60.md](TRUST-BOUNDARY-AUDIT-v1.60.md) — RC1 whole-chain adversarial audit.
-- [RELEASE-v1.60-rc1.md](RELEASE-v1.60-rc1.md) — RC1 release scope and known limitations.
+- [TRUST-BOUNDARY-AUDIT-v1.60.md](TRUST-BOUNDARY-AUDIT-v1.60.md) — RC whole-chain adversarial audit.
+- [RELEASE-v1.60-rc1.md](RELEASE-v1.60-rc1.md) — immutable RC1 release scope and known limitations.
+- [TEST-REPORT-v1.60-rc1-redteam.md](TEST-REPORT-v1.60-rc1-redteam.md) — blind post-RC1 adversarial findings, fixes and retained evidence limits.
+- [RELEASE-v1.60-rc2.md](RELEASE-v1.60-rc2.md) — RC2 hardening scope, acceptance gate and known boundaries.
 - [src/narf/](src/narf/) — Python reference implementation and authority adapters.
 - [tests/](tests/) and [tools/](tools/) — regression and adversarial fixtures.
 - [TEST-REPORT.md](TEST-REPORT.md) — recorded evidence and historical limitations.
