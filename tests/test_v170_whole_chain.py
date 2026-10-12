@@ -344,7 +344,7 @@ class V170WholeChainTests(unittest.TestCase):
                 authority_revision=token.authority_revision,
                 effect_id=token.effect_id,
                 effect_version=token.effect_version,
-                fence_sequence=0,
+                fence_sequence=-1,
                 authority_id=token.authority_id,
             )
 
