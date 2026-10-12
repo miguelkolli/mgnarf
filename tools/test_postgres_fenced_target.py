@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 import argparse
-from dataclasses import asdict
+import hashlib
 import json
-import os
 from pathlib import Path
 import sys
 import tempfile
@@ -28,7 +27,6 @@ def load_api():
         FencedOperationEffectExecutor,
         FencedOperationGate,
         FrozenState,
-        NARFError,
         PostgresConsumptionAuthority,
         PostgresFenceControlPlane,
         PostgresFencedTarget,
@@ -47,6 +45,11 @@ def psycopg_module():
     return psycopg
 
 
+def advisory_key(scope: str) -> int:
+    raw = hashlib.sha256(scope.encode("utf-8")).digest()[:8]
+    return int.from_bytes(raw, "big", signed=True)
+
+
 def dump(path: Path, value) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
 
@@ -55,10 +58,7 @@ def attempt(call):
     try:
         return {"returned": call(), "error": None}
     except Exception as error:
-        return {
-            "returned": None,
-            "error": {"type": type(error).__name__, "message": str(error)},
-        }
+        return {"returned": None, "error": {"type": type(error).__name__, "message": str(error)}}
 
 
 def admin_exec(admin_dsn: str, sql: str, params=()):
@@ -72,10 +72,7 @@ def admin_exec(admin_dsn: str, sql: str, params=()):
 
 
 def reset(admin_dsn: str) -> None:
-    admin_exec(
-        admin_dsn,
-        "TRUNCATE TABLE narf_fenced_effects, narf_fence_issuance, narf_consumption_ledger",
-    )
+    admin_exec(admin_dsn, "TRUNCATE TABLE narf_fenced_effects, narf_fence_issuance, narf_consumption_ledger")
     admin_exec(
         admin_dsn,
         "UPDATE narf_fence_scopes SET authority_revision = %s, fence_sequence = 0 WHERE scope_id = %s",
@@ -253,17 +250,22 @@ def run_newer_fence_supersedes(output, api, issuer_dsn, target_dsn, admin_dsn):
     return row
 
 
+def hold_transition(control_dsn: str):
+    psycopg = psycopg_module()
+    connection = psycopg.connect(control_dsn)
+    cursor = connection.cursor()
+    cursor.execute("SELECT pg_advisory_xact_lock(%s)", (advisory_key(SCOPE),))
+    cursor.execute("SELECT authority_revision FROM narf_fence_scopes WHERE scope_id = %s FOR UPDATE", (SCOPE,))
+    cursor.execute("UPDATE narf_fence_scopes SET authority_revision = 12 WHERE scope_id = %s", (SCOPE,))
+    return connection
+
+
 def run_transition_serializes_acquire(output, api, issuer_dsn, control_dsn, admin_dsn):
     reset(admin_dsn)
     authority = api["PostgresFencingAuthority"](issuer_dsn)
-    psycopg = psycopg_module()
-    connection = psycopg.connect(control_dsn)
+    connection = hold_transition(control_dsn)
     result = {}
     try:
-        cursor = connection.cursor()
-        cursor.execute("SELECT authority_revision FROM narf_fence_scopes WHERE scope_id = %s FOR UPDATE", (SCOPE,))
-        cursor.execute("UPDATE narf_fence_scopes SET authority_revision = 12 WHERE scope_id = %s", (SCOPE,))
-
         def worker():
             result.update(attempt(lambda: authority.acquire(fence_scope_id=SCOPE, operation_id=str(uuid4()), expected_authority_revision=11, effect_id="deploy", effect_version="1")))
 
@@ -296,14 +298,9 @@ def run_transition_serializes_commit(output, api, issuer_dsn, target_dsn, contro
     authority = api["PostgresFencingAuthority"](issuer_dsn)
     pg_target = target(api, target_dsn)
     token = authority.acquire(fence_scope_id=SCOPE, operation_id=str(uuid4()), expected_authority_revision=11, effect_id="deploy", effect_version="1")
-    psycopg = psycopg_module()
-    connection = psycopg.connect(control_dsn)
+    connection = hold_transition(control_dsn)
     result = {}
     try:
-        cursor = connection.cursor()
-        cursor.execute("SELECT authority_revision FROM narf_fence_scopes WHERE scope_id = %s FOR UPDATE", (SCOPE,))
-        cursor.execute("UPDATE narf_fence_scopes SET authority_revision = 12 WHERE scope_id = %s", (SCOPE,))
-
         def worker():
             result.update(attempt(lambda: pg_target.commit(token, "must-not-commit")))
 
@@ -340,10 +337,7 @@ def run_privileged_rollback_limitation(output, api, issuer_dsn, target_dsn, cont
     control.advance(SCOPE, expected_revision=11, new_revision=12)
     admin_exec(admin_dsn, "UPDATE narf_fence_scopes SET authority_revision = 11, fence_sequence = 1 WHERE scope_id = %s", (SCOPE,))
     replay = attempt(lambda: pg_target.commit(token, "privileged-rollback"))
-    limitation = (
-        replay == {"returned": "committed", "error": None}
-        and scalar(admin_dsn, "SELECT count(*) FROM narf_fenced_effects") == 1
-    )
+    limitation = replay == {"returned": "committed", "error": None} and scalar(admin_dsn, "SELECT count(*) FROM narf_fenced_effects") == 1
     row = {"case": "privileged-authoritative-state-rollback", "result": "LIMITATION_CONFIRMED" if limitation else "FAIL", "attempt": replay, "scope": scope_state(admin_dsn), "admin_rollback": True}
     dump(output / "rollback-limitation.json", row)
     return row
@@ -380,7 +374,7 @@ def main():
         "planned_cases": 6,
         "counts": counts,
         "cases": rows,
-        "claim": "For this measured PostgreSQL transaction model, authority transitions and fence ordering are enforced at target commit; privileged rollback remains outside the measured guarantee.",
+        "claim": "For this measured PostgreSQL advisory-lock transaction model, authority transitions and fence ordering are enforced at target commit; privileged rollback remains outside the measured guarantee.",
     }
     dump(args.output / "summary.json", summary)
     print(json.dumps(summary, indent=2, sort_keys=True))
