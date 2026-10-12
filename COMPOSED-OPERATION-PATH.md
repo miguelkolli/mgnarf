@@ -42,6 +42,25 @@ The operation binding remains separate from the NARF contract so an external
 consumption authority can use one host-owned operation UUID across retries or
 newly frozen contracts representing the same real-world operation.
 
+## Mandatory executor route in composed mode
+
+A composed `OperationBoundSession` does not allow callers to invoke the effect
+through its public `execute_effect()` method. Effect entry must go through:
+
+```python
+OperationBoundEffectExecutor(authority).execute(session)
+```
+
+This is an API-level fail-closed guard against accidentally skipping the stable
+operation reservation. The legacy `OperationBoundGate(store)` path retains its
+historical direct `session.execute_effect()` behavior for backward compatibility.
+
+The private package route used by the executor is not claimed as a sandbox
+against a malicious trusted host running arbitrary Python in the same process.
+The trusted host remains inside the NARF trust boundary. The guard prevents a
+normal integration from silently selecting the hardened gate and then bypassing
+its required external authority step.
+
 ## Fail-closed ordering
 
 `OperationBoundEffectExecutor` performs:
@@ -49,10 +68,10 @@ newly frozen contracts representing the same real-world operation.
 ```text
 session.finalize()
   -> reserve(stable operation_id)
-  -> session.execute_effect()
+  -> guarded session effect entry
 ```
 
-In authority-revision mode, `session.execute_effect()` still performs the
+In authority-revision mode, guarded effect entry still performs the
 revision-guarded NARF pre-effect checks and the additional authority check at
 protected callback entry.
 
@@ -141,4 +160,6 @@ The composed reference path must demonstrate at minimum:
 5. a new contract with the same stable operation ID cannot replay the effect;
 6. the convenience wrapper cannot silently enable identity policy without the
    monotonic authority probe;
-7. all legacy operation-bound tests continue to pass unchanged.
+7. composed sessions cannot directly bypass `OperationBoundEffectExecutor`;
+8. legacy operation-bound direct effect behavior remains compatible;
+9. all legacy operation-bound tests continue to pass unchanged.

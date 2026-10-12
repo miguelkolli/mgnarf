@@ -37,12 +37,22 @@ def _binding_id(contract_id: str) -> str:
 class OperationBoundSession:
     """Session wrapper carrying an authenticated host-owned operation identity."""
 
-    __slots__ = ("__session", "__contract_id", "__operation_id")
+    __slots__ = ("__session", "__contract_id", "__operation_id", "__executor_required")
 
-    def __init__(self, session, contract_id: str, operation_id: str):
+    def __init__(
+        self,
+        session,
+        contract_id: str,
+        operation_id: str,
+        *,
+        executor_required: bool = False,
+    ):
         self.__session = session
         self.__contract_id = _canonical_uuid(contract_id, "contract_id")
         self.__operation_id = _canonical_uuid(operation_id, "operation_id")
+        if type(executor_required) is not bool:
+            raise NARFError("operation: invalid executor requirement")
+        self.__executor_required = executor_required
 
     @property
     def contract_id(self) -> str:
@@ -78,6 +88,12 @@ class OperationBoundSession:
         return self.__session.finalize()
 
     def execute_effect(self):
+        if self.__executor_required:
+            raise NARFError("effect: OperationBoundEffectExecutor required")
+        return self.__session.execute_effect()
+
+    def _execute_effect_via_executor(self):
+        """Trusted package route used after stable operation reservation."""
         return self.__session.execute_effect()
 
 
@@ -95,6 +111,11 @@ class OperationBoundGate:
     created through ``AuthorityRevisionGate``. This intentionally avoids adding
     a snapshot-only identity mode to the convenience wrapper; callers wanting
     that weaker opt-in path can use ``NARFGate`` directly.
+
+    Composed sessions also require ``OperationBoundEffectExecutor`` for effect
+    entry. This prevents accidental bypass of the stable operation reservation.
+    Legacy sessions keep their historical direct ``execute_effect()`` behavior
+    for compatibility.
 
     The operation binding is stored as a separate HMAC-authenticated receipt.
     If the binding receipt is missing, tampered, rolled back, or otherwise
@@ -201,7 +222,12 @@ class OperationBoundGate:
             state_probe=state_probe,
             revocation_probe=revocation_probe,
         )
-        return OperationBoundSession(session, contract_id, operation_id)
+        return OperationBoundSession(
+            session,
+            contract_id,
+            operation_id,
+            executor_required=self.__authority_revision_enabled,
+        )
 
 
 class OperationBoundEffectExecutor:
@@ -240,4 +266,4 @@ class OperationBoundEffectExecutor:
         # The stable operation identity, not the fresh contract UUID, is the
         # external single-use token. Never release an uncertain reservation.
         self.authority.reserve(session.operation_id)
-        return session.execute_effect()
+        return session._execute_effect_via_executor()
