@@ -25,15 +25,15 @@ NARF is a standalone fail-closed acceptance gate for AI-assisted and automated w
 
 It has no required parent framework, private repository, workspace variable, external governance runtime or project harness. The core reference gate uses the Python standard library. Optional authority adapters add dependencies only for their own measured boundary.
 
-## Status: v1.60 — stable immutable release
+## Status: v1.61 — stable immutable release
 
-`v1.60` is published as an immutable stable release pinned to its verified freeze commit. It includes the RC2 hardening, the final post-RC2 semantic fixes, and a fresh stable adversarial pass. **Stable freezes the v1.60 behavioral contract and measured reference boundary; it is not a claim that every deployment is secure, that every external effect is exactly-once, or that MgNarf has received an independent security certification.**
+`v1.61` is published as an immutable stable patch release pinned to its verified freeze commit. It preserves the measured v1.60 behavioral boundary and adds signed-witness slow-header deadline hardening plus exact regression coverage for that reproduced availability finding. **Stable freezes the v1.61 behavioral contract and measured reference boundary; it is not a claim that every deployment is secure, that every external effect is exactly-once, or that MgNarf has received an independent security certification.**
 
 The merge-required reference gate covers repository tests and compilation, strict canonical task binding, distinct UID/GID isolation, trusted-host/untrusted-worker process separation, crash persistence, filesystem rollback characterization, rollback hardening, multi-domain fencing, PostgreSQL consumption authority, Ed25519 signed witness fencing, stable operation-ID binding, high-fanout same-operation races, ambiguous durable-reservation outcomes, and the strict trusted reference-host transition. A required boundary that fails, skips or is cancelled prevents the aggregate required check from succeeding.
 
 Additional focused workflows retain deterministic evidence for canonical/receipt fuzzing and integration fault injection. A green limitation witness means the documented limitation was reproduced exactly; it does not relabel that limitation as a security PASS.
 
-The stable release scope is defined in [RELEASE-v1.60.md](RELEASE-v1.60.md). The post-RC2 semantic review is recorded in [STABLE-READINESS-v1.60.md](STABLE-READINESS-v1.60.md), and the fresh post-hardening attack/fault-injection pass is recorded in [TEST-REPORT-v1.60-stable-adversarial.md](TEST-REPORT-v1.60-stable-adversarial.md). The earlier release-candidate boundary remains documented in [TRUST-BOUNDARY-AUDIT-v1.60.md](TRUST-BOUNDARY-AUDIT-v1.60.md), [RELEASE-v1.60-rc1.md](RELEASE-v1.60-rc1.md), [TEST-REPORT-v1.60-rc1-redteam.md](TEST-REPORT-v1.60-rc1-redteam.md), and [RELEASE-v1.60-rc2.md](RELEASE-v1.60-rc2.md).
+The current stable patch scope is defined in [RELEASE-v1.61.md](RELEASE-v1.61.md), and its triggering finding, implementation correction and repository-owned evidence are recorded in [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md). The immutable v1.60 release remains historical evidence in [RELEASE-v1.60.md](RELEASE-v1.60.md), [STABLE-READINESS-v1.60.md](STABLE-READINESS-v1.60.md), [TEST-REPORT-v1.60-stable-adversarial.md](TEST-REPORT-v1.60-stable-adversarial.md), [TRUST-BOUNDARY-AUDIT-v1.60.md](TRUST-BOUNDARY-AUDIT-v1.60.md), [RELEASE-v1.60-rc1.md](RELEASE-v1.60-rc1.md), [TEST-REPORT-v1.60-rc1-redteam.md](TEST-REPORT-v1.60-rc1-redteam.md), and [RELEASE-v1.60-rc2.md](RELEASE-v1.60-rc2.md).
 
 Rollback claims remain deliberately scoped. The filesystem receipt store is **not** rollback resistant. Hardened paths block replay while at least one independent consumption-authority history survives. If privileged operators can rewind the signed witness, PostgreSQL ledger and every other preserving authority history together, replay can return; that remains an explicit `LIMITATION_CONFIRMED` boundary.
 
@@ -66,9 +66,9 @@ PASS = frozen task binding
 
 If any required condition is absent or invalid, NARF must not manufacture PASS.
 
-## Measured v1.60 boundary
+## Measured v1.61 boundary
 
-The v1.60 stable release includes measured evidence for:
+The v1.61 stable release retains the measured v1.60 evidence and adds the reproduced signed-witness slow-header hardening boundary:
 
 - a strict Python-host JSON data model for security bindings; coercible non-JSON Python values fail closed;
 - deterministic canonical/receipt fuzzing with 10,000 generated strict JSON values and 256 stale-MAC receipt mutations;
@@ -80,6 +80,7 @@ The v1.60 stable release includes measured evidence for:
 - rollback-protected single-use authorities and all-of multi-domain fencing;
 - least-privilege PostgreSQL reservation with concurrent single-winner behavior;
 - Ed25519 signed witness responses with fresh nonce binding;
+- one monotonic signed-witness response deadline applied across reproduced slow-header and slow-body socket read paths;
 - stable authenticated host-owned operation IDs across fresh contracts;
 - a synchronized 16-host same-operation race requiring exactly one callback and fifteen consumed-token blocks;
 - fail-closed ambiguous reservation outcomes when a durable witness or PostgreSQL reservation succeeds but its acknowledgement is lost;
@@ -96,9 +97,11 @@ These are measured reference boundaries, not an independent security certificati
 - [REFERENCE-HOST.md](REFERENCE-HOST.md) and [PROCESS-BOUNDARY.md](PROCESS-BOUNDARY.md) — trusted-host examples.
 - [ROLLBACK-BOUNDARY.md](ROLLBACK-BOUNDARY.md), [ROLLBACK-HARDENING.md](ROLLBACK-HARDENING.md) and [MULTIDOMAIN-FENCING.md](MULTIDOMAIN-FENCING.md) — measured rollback boundaries.
 - [POSTGRES-AUTHORITY.md](POSTGRES-AUTHORITY.md) — PostgreSQL authority boundary and limits.
-- [RELEASE-v1.60.md](RELEASE-v1.60.md) — stable v1.60 release scope, acceptance gate and retained boundaries.
-- [STABLE-READINESS-v1.60.md](STABLE-READINESS-v1.60.md) — post-RC2 semantic review and stable-readiness decisions.
-- [TEST-REPORT-v1.60-stable-adversarial.md](TEST-REPORT-v1.60-stable-adversarial.md) — fresh stable attack/fault-injection evidence.
+- [RELEASE-v1.61.md](RELEASE-v1.61.md) — current immutable stable patch scope, acceptance gate and retained boundaries.
+- [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md) — v1.61 slow-header reproduction, hardening and exact repository evidence.
+- [RELEASE-v1.60.md](RELEASE-v1.60.md) — immutable stable v1.60 release scope and retained boundaries.
+- [STABLE-READINESS-v1.60.md](STABLE-READINESS-v1.60.md) — post-RC2 semantic review and v1.60 stable-readiness decisions.
+- [TEST-REPORT-v1.60-stable-adversarial.md](TEST-REPORT-v1.60-stable-adversarial.md) — v1.60 stable attack/fault-injection evidence.
 - [TRUST-BOUNDARY-AUDIT-v1.60.md](TRUST-BOUNDARY-AUDIT-v1.60.md) — RC whole-chain adversarial audit.
 - [RELEASE-v1.60-rc1.md](RELEASE-v1.60-rc1.md) — immutable RC1 release scope and known limitations.
 - [TEST-REPORT-v1.60-rc1-redteam.md](TEST-REPORT-v1.60-rc1-redteam.md) — blind post-RC1 adversarial findings, fixes and retained evidence limits.
@@ -146,7 +149,7 @@ Verifier artifacts are hashed and authenticated as evidence, but the gate does n
 - Session execution state is memory-resident. A crash can require a fresh session and repeated verification.
 - The reference fixtures do not certify an arbitrary production sandbox, database control plane, witness operator, deployment or remote target.
 
-Read [HOST-CONTRACT.md](HOST-CONTRACT.md) and [TRUST-BOUNDARY-AUDIT-v1.60.md](TRUST-BOUNDARY-AUDIT-v1.60.md) before integrating an effect. NARF PASS applies only to the measured scope.
+Read [HOST-CONTRACT.md](HOST-CONTRACT.md), [RELEASE-v1.61.md](RELEASE-v1.61.md) and [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md) before integrating an effect. NARF PASS applies only to the measured scope.
 
 ## License and attribution
 
