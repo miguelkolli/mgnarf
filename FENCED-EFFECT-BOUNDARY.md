@@ -34,7 +34,8 @@ Conceptually:
 
 ```text
 NARF PASS
-  -> acquire fence for operation X / fence scope Y at authority revision R
+  -> consume/reserve stable operation X
+  -> acquire fence for fence scope Y at authority revision R
   -> local NARF effect consumption
   -> send fence F to external resource Y
   -> external resource validates F against current authoritative generation at commit
@@ -273,24 +274,48 @@ If the external API offers no place to validate or persist/query authoritative
 fence state at commit, MGnarf must label that integration `UNVERIFIED` for the
 final TOCTOU guarantee rather than pretend a client-side check is equivalent.
 
-## 10. Execution ordering
+## 10. Stable operation and fence ordering
 
-The reference hardened executor should preserve this fail-closed ordering:
+Stable operation consumption and fence issuance have their own crash boundary.
+The reference hardened executor must not allow this unsafe state:
+
+```text
+fence issued
+-> process crashes
+-> stable operation was never consumed
+-> retry treats the same real operation as fresh
+```
+
+Therefore one of these models is required:
+
+1. reserve/consume the stable `operation_id` **before** fence acquisition; or
+2. reserve the stable operation and acquire the fence atomically in one trusted
+   authority transaction/protocol.
+
+The reference multi-authority composition should default to the first model
+unless an authority explicitly implements the second.
+
+Fail-closed ordering:
 
 ```text
 1. revalidate authenticated NARF PASS
-2. acquire fence bound to scope + operation + expected authority revision + effect
-3. keep operation authorization consumed/uncertain after successful or ambiguous acquisition
+2. durably reserve stable operation_id
+3. acquire fence bound to scope + operation + expected authority revision + effect
 4. persist NARF's local effect-consumption evidence
 5. invoke the fenced external adapter with that exact fence
 6. external resource validates current authoritative generation and fence at commit
 ```
 
-No step after fence acquisition may release the operation for an automatic blind
-retry merely because the callback raised or the network response was ambiguous.
+If step 2 succeeds and step 3 fails, times out, or is ambiguous, the operation
+reservation remains consumed. If step 3 succeeds and any later step fails or is
+ambiguous, the operation likewise remains consumed. No automatic rollback of the
+stable operation reservation is permitted.
 
-Availability is sacrificed when the system cannot prove that a previously issued
-fence/effect attempt was harmless.
+A combined operation+fence authority is acceptable only if its atomic semantics
+prove that no fence can become valid while the same operation remains reusable.
+
+Availability is sacrificed when the system cannot prove that a previously
+reserved/issued effect attempt was harmless.
 
 ## 11. Binding evidence
 
@@ -338,39 +363,45 @@ visibly separate and must not be presented as providing the fenced guarantee.
 Before runtime implementation can claim PASS, tests must cover at least:
 
 1. valid current fence -> external effect commits once;
-2. authority revision changes before fence acquisition -> no fence/effect;
-3. fence acquisition races an authority transition -> fail closed or serialize;
-4. authority transition occurs after fence acquisition but before commit, with
+2. authority revision changes before stable operation reservation -> no
+   operation/fence/effect;
+3. authority revision changes after stable operation reservation but before
+   fence acquisition -> fence/effect blocked and operation remains consumed;
+4. fence acquisition races an authority transition -> fail closed or serialize;
+5. authority transition occurs after fence acquisition but before commit, with
    **no newer effect request** -> old fence rejected at external commit;
-5. newer authoritative fence generation is registered/committed before older
+6. newer authoritative fence generation is registered/committed before older
    fence reaches commit -> older fence rejected;
-6. same fence replayed for the same operation -> rejected/idempotently
+7. same fence replayed for the same operation -> rejected/idempotently
    non-duplicating;
-7. fence replayed for another operation in the same scope -> rejected;
-8. fence replayed for another effect ID/version -> rejected;
-9. fence replayed for another fence scope -> rejected;
-10. two different legitimate operations in the same fence scope produce
+8. fence replayed for another operation in the same scope -> rejected;
+9. fence replayed for another effect ID/version -> rejected;
+10. fence replayed for another fence scope -> rejected;
+11. two different legitimate operations in the same fence scope produce
     comparable fence generations;
-11. activity in a different fence scope does not accidentally authorize or
+12. activity in a different fence scope does not accidentally authorize or
     invalidate this scope unless the authority explicitly uses a global ordering
     model;
-12. fence fields tampered -> rejected;
-13. missing/invalid authority identity -> rejected;
-14. equal or decreasing fence sequence where strict advance is required ->
+13. fence fields tampered -> rejected;
+14. missing/invalid authority identity -> rejected;
+15. equal or decreasing fence sequence where strict advance is required ->
     rejected;
-15. fencing ledger rollback -> BLOCKED or documented LIMITATION_CONFIRMED, never
+16. fencing ledger rollback -> BLOCKED or documented LIMITATION_CONFIRMED, never
     silently PASS;
-16. direct session effect bypass -> BLOCKED;
-17. non-fenced `OperationBoundEffectExecutor` used on fenced session -> BLOCKED;
-18. callback/network failure after fence issuance -> authorization remains
+17. direct session effect bypass -> BLOCKED;
+18. non-fenced `OperationBoundEffectExecutor` used on fenced session -> BLOCKED;
+19. crash after stable operation reservation but before fence acquisition ->
+    retry remains blocked for that operation;
+20. crash after fence issuance but before local effect-consumption evidence ->
+    retry remains blocked/uncertain for that operation;
+21. callback/network failure after fence issuance -> authorization remains
     consumed/uncertain, no blind retry;
-19. crash after fence issuance but before local callback -> fail closed on retry;
-20. external resource that merely receives/logs a token or only tracks the
+22. external resource that merely receives/logs a token or only tracks the
     largest previously seen token without authority-transition invalidation ->
     UNVERIFIED for the stronger final TOCTOU claim;
-21. concurrent fences in one scope -> deterministic ordering and commit behavior
+23. concurrent fences in one scope -> deterministic ordering and commit behavior
     consistent with the authority/target protocol;
-22. legacy non-fenced path remains behaviorally compatible and is not relabeled
+24. legacy non-fenced path remains behaviorally compatible and is not relabeled
     as fenced.
 
 ## 14. Reference implementation strategy
@@ -387,7 +418,8 @@ missing API/boundary.
 
 Add a fenced executor that composes with the current authority-revision + stable
 operation session. It must prevent direct/non-fenced execution routes for fenced
-sessions.
+sessions and preserve stable-operation consumption across all post-reservation
+failure windows.
 
 Layer B may demonstrate correct binding/transport and fail-closed routing, but
 cannot establish authority-transition invalidation at external commit by itself.
