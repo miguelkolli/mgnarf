@@ -1,31 +1,23 @@
-"""PostgreSQL-backed fencing authority and enforcing reference target.
+"""Database-enforced PostgreSQL fencing reference adapters.
 
-This module is Layer C for the fenced-effect design. It demonstrates one
-concrete deployment class where fence issuance, authority transitions, and the
-external effect commit share one PostgreSQL serialization domain.
+Layer C moves the security-critical serialization into SECURITY DEFINER database
+functions. Runtime roles receive only EXECUTE on their intended function; they
+do not need direct DML authority over fencing or effect state.
 
-The stronger guarantee is intentionally narrow: it applies only when the
-configured PostgreSQL target validates the current authority generation and
-fence sequence in the same transaction that commits the effect.
+The stronger guarantee remains deployment-specific: the supplied SQL functions,
+role grants, PostgreSQL transaction semantics, and protection of the function
+owner are all part of the measured trust boundary.
 """
 from __future__ import annotations
 
-import hashlib
 import re
 from urllib.parse import unquote, urlsplit
 
 from .fenced_effect import FenceToken, FencingAuthority
 from .gate import NARFError
 
-_TABLE_RE = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
 _IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}")
 _SCOPE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}")
-
-
-def _table(value: object, label: str) -> str:
-    if type(value) is not str or _TABLE_RE.fullmatch(value) is None:
-        raise NARFError(f"{label}: invalid PostgreSQL table")
-    return value
 
 
 def _identifier(value: object, label: str) -> str:
@@ -38,12 +30,6 @@ def _scope(value: object) -> str:
     if type(value) is not str or _SCOPE_RE.fullmatch(value) is None:
         raise NARFError("fence_scope_id: invalid identifier")
     return value
-
-
-def _advisory_key(scope: str) -> int:
-    """Stable signed int64 key for one fence scope."""
-    raw = hashlib.sha256(scope.encode("utf-8")).digest()[:8]
-    return int.from_bytes(raw, "big", signed=True)
 
 
 def _postgres_domain_identity(dsn: str) -> tuple[str, str, int, str]:
@@ -73,8 +59,10 @@ def _connect(dsn: str, timeout: int):
         raise NARFError("fence: PostgreSQL service unavailable") from None
 
 
-def _lock_scope(cursor, scope: str) -> None:
-    cursor.execute("SELECT pg_advisory_xact_lock(%s)", (_advisory_key(scope),))
+def _validate_timeout(value: object) -> int:
+    if type(value) is not int or not 1 <= value <= 30:
+        raise NARFError("fence: invalid PostgreSQL connect timeout")
+    return value
 
 
 def _validate_token(token: object) -> FenceToken:
@@ -93,17 +81,36 @@ def _validate_token(token: object) -> FenceToken:
     return token
 
 
+def _known_database_error(error: Exception, *, target: bool = False) -> NARFError | None:
+    text = str(error)
+    if "narf: unknown scope" in text:
+        return NARFError("fence target: unknown scope" if target else "fence: unknown scope")
+    if "narf: authority revision changed" in text:
+        return NARFError("fence: authority revision changed")
+    if "narf: stale authority revision" in text:
+        return NARFError("fence target: stale authority revision")
+    if "narf: stale fence sequence" in text:
+        return NARFError("fence target: stale fence sequence")
+    if "narf: issuance evidence mismatch" in text:
+        return NARFError("fence target: issuance evidence mismatch")
+    if "narf: operation already committed" in text:
+        return NARFError("fence target: operation already committed")
+    if "narf: invalid fence request" in text:
+        return NARFError("fence: invalid fence request")
+    if "narf: invalid authority transition" in text:
+        return NARFError("fence: invalid authority transition")
+    if "narf: invalid commit request" in text:
+        return NARFError("fence target: invalid commit request")
+    return None
+
+
 class PostgresFencingAuthority(FencingAuthority):
-    """Issue monotonic fences from one PostgreSQL scope row.
+    """Issue a fence through ``public.narf_acquire_fence``.
 
-    Runtime schema creation is deliberately out of scope. The issuer role should
-    have SELECT on the scope row, UPDATE only on ``fence_sequence``, and
-    INSERT/SELECT on the issuance ledger. It should not be able to change
-    ``authority_revision``.
-
-    Issuance obtains a transaction-scoped PostgreSQL advisory lock derived from
-    ``fence_scope_id`` before reading/updating the row. The control plane and
-    enforcing target use the same lock key.
+    The database function owns advisory locking, revision validation, sequence
+    advancement, and issuance persistence. The runtime issuer credential should
+    have EXECUTE on that function, not direct UPDATE/INSERT authority over the
+    fencing tables.
     """
 
     def __init__(
@@ -111,18 +118,12 @@ class PostgresFencingAuthority(FencingAuthority):
         dsn: str,
         *,
         authority_id: str = "postgres-fencing-authority.v1",
-        scope_table: str = "narf_fence_scopes",
-        issuance_table: str = "narf_fence_issuance",
         connect_timeout_seconds: int = 3,
     ):
         self._domain_identity = _postgres_domain_identity(dsn)
         self._dsn = dsn
         self._authority_id = _identifier(authority_id, "fencing_authority_id")
-        self.scope_table = _table(scope_table, "scope_table")
-        self.issuance_table = _table(issuance_table, "issuance_table")
-        if type(connect_timeout_seconds) is not int or not 1 <= connect_timeout_seconds <= 30:
-            raise NARFError("fence: invalid PostgreSQL connect timeout")
-        self.connect_timeout_seconds = connect_timeout_seconds
+        self.connect_timeout_seconds = _validate_timeout(connect_timeout_seconds)
 
     @property
     def authority_id(self) -> str:
@@ -149,39 +150,14 @@ class PostgresFencingAuthority(FencingAuthority):
             raise NARFError("fence: invalid expected authority revision")
 
         connection = _connect(self._dsn, self.connect_timeout_seconds)
+        row = None
         try:
             with connection:
                 with connection.cursor() as cursor:
-                    _lock_scope(cursor, scope)
                     cursor.execute(
-                        f"SELECT authority_revision, fence_sequence "
-                        f"FROM {self.scope_table} WHERE scope_id = %s FOR UPDATE",
-                        (scope,),
-                    )
-                    row = cursor.fetchone()
-                    if row is None:
-                        raise NARFError("fence: unknown scope")
-                    current_revision = int(row[0])
-                    current_sequence = int(row[1])
-                    if current_revision != expected_authority_revision:
-                        raise NARFError("fence: authority revision changed")
-                    next_sequence = current_sequence + 1
-                    cursor.execute(
-                        f"UPDATE {self.scope_table} SET fence_sequence = %s "
-                        "WHERE scope_id = %s RETURNING fence_sequence",
-                        (next_sequence, scope),
-                    )
-                    updated = cursor.fetchone()
-                    if updated is None or int(updated[0]) != next_sequence:
-                        raise NARFError("fence: sequence update failed")
-                    cursor.execute(
-                        f"INSERT INTO {self.issuance_table} "
-                        "(scope_id, fence_sequence, operation_id, authority_revision, "
-                        "effect_id, effect_version, authority_id) "
-                        "VALUES (%s, %s, %s::uuid, %s, %s, %s, %s)",
+                        "SELECT public.narf_acquire_fence(%s, %s::uuid, %s, %s, %s, %s)",
                         (
                             scope,
-                            next_sequence,
                             operation_id,
                             expected_authority_revision,
                             effect_id,
@@ -189,9 +165,11 @@ class PostgresFencingAuthority(FencingAuthority):
                             self.authority_id,
                         ),
                     )
-        except NARFError:
-            raise
-        except Exception:
+                    row = cursor.fetchone()
+        except Exception as error:
+            known = _known_database_error(error)
+            if known is not None:
+                raise known from None
             raise NARFError("fence: PostgreSQL issuance transaction failed") from None
         finally:
             try:
@@ -199,38 +177,26 @@ class PostgresFencingAuthority(FencingAuthority):
             except Exception:
                 pass
 
+        if row is None or type(row[0]) is not int or row[0] < 1:
+            raise NARFError("fence: PostgreSQL issuance returned invalid sequence")
         return FenceToken(
             fence_scope_id=scope,
             operation_id=operation_id,
             authority_revision=expected_authority_revision,
             effect_id=effect_id,
             effect_version=effect_version,
-            fence_sequence=next_sequence,
+            fence_sequence=row[0],
             authority_id=self.authority_id,
         )
 
 
 class PostgresFenceControlPlane:
-    """Advance the authority generation independently from effect issuance.
+    """Read/advance the authority generation through database-owned functions."""
 
-    The control-plane role should be allowed to UPDATE ``authority_revision`` but
-    not ``fence_sequence`` or effect rows. Advancing the revision obtains the
-    same transaction-scoped advisory lock used by issuance and target commit.
-    """
-
-    def __init__(
-        self,
-        dsn: str,
-        *,
-        scope_table: str = "narf_fence_scopes",
-        connect_timeout_seconds: int = 3,
-    ):
+    def __init__(self, dsn: str, *, connect_timeout_seconds: int = 3):
         self._domain_identity = _postgres_domain_identity(dsn)
         self._dsn = dsn
-        self.scope_table = _table(scope_table, "scope_table")
-        if type(connect_timeout_seconds) is not int or not 1 <= connect_timeout_seconds <= 30:
-            raise NARFError("fence: invalid PostgreSQL connect timeout")
-        self.connect_timeout_seconds = connect_timeout_seconds
+        self.connect_timeout_seconds = _validate_timeout(connect_timeout_seconds)
 
     def domain_key(self):
         return self._domain_identity
@@ -238,26 +204,28 @@ class PostgresFenceControlPlane:
     def current_revision(self, fence_scope_id: str) -> int:
         scope = _scope(fence_scope_id)
         connection = _connect(self._dsn, self.connect_timeout_seconds)
+        row = None
         try:
             with connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        f"SELECT authority_revision FROM {self.scope_table} WHERE scope_id = %s",
+                        "SELECT public.narf_current_fence_revision(%s)",
                         (scope,),
                     )
                     row = cursor.fetchone()
-                    if row is None:
-                        raise NARFError("fence: unknown scope")
-                    return int(row[0])
-        except NARFError:
-            raise
-        except Exception:
+        except Exception as error:
+            known = _known_database_error(error)
+            if known is not None:
+                raise known from None
             raise NARFError("fence: PostgreSQL control-plane query failed") from None
         finally:
             try:
                 connection.close()
             except Exception:
                 pass
+        if row is None or type(row[0]) is not int or row[0] < 0:
+            raise NARFError("fence: PostgreSQL control-plane returned invalid revision")
+        return row[0]
 
     def advance(
         self,
@@ -272,49 +240,38 @@ class PostgresFenceControlPlane:
         if type(new_revision) is not int or new_revision <= expected_revision:
             raise NARFError("fence: authority revision must advance")
         connection = _connect(self._dsn, self.connect_timeout_seconds)
+        row = None
         try:
             with connection:
                 with connection.cursor() as cursor:
-                    _lock_scope(cursor, scope)
                     cursor.execute(
-                        f"SELECT authority_revision FROM {self.scope_table} "
-                        "WHERE scope_id = %s FOR UPDATE",
-                        (scope,),
+                        "SELECT public.narf_advance_fence_revision(%s, %s, %s)",
+                        (scope, expected_revision, new_revision),
                     )
                     row = cursor.fetchone()
-                    if row is None:
-                        raise NARFError("fence: unknown scope")
-                    if int(row[0]) != expected_revision:
-                        raise NARFError("fence: authority revision changed")
-                    cursor.execute(
-                        f"UPDATE {self.scope_table} SET authority_revision = %s "
-                        "WHERE scope_id = %s RETURNING authority_revision",
-                        (new_revision, scope),
-                    )
-                    updated = cursor.fetchone()
-                    if updated is None or int(updated[0]) != new_revision:
-                        raise NARFError("fence: authority revision update failed")
-                    return new_revision
-        except NARFError:
-            raise
-        except Exception:
+        except Exception as error:
+            known = _known_database_error(error)
+            if known is not None:
+                raise known from None
             raise NARFError("fence: PostgreSQL authority transition failed") from None
         finally:
             try:
                 connection.close()
             except Exception:
                 pass
+        if row is None or row[0] != new_revision:
+            raise NARFError("fence: PostgreSQL authority transition returned invalid revision")
+        return new_revision
 
 
 class PostgresFencedTarget:
-    """Reference target that enforces fence validity at PostgreSQL commit time.
+    """Commit through ``public.narf_commit_fenced_effect``.
 
-    The target obtains the same transaction-scoped advisory lock used by fence
-    issuance and authority transitions. It then validates current revision,
-    latest sequence, and the exact issuance record before inserting the external
-    effect row in that same transaction. The target needs SELECT on scope and
-    issuance state plus INSERT on the effect table; no scope UPDATE privilege is
-    required merely to participate in serialization.
+    The target runtime credential should have EXECUTE only on the commit
+    function. The SECURITY DEFINER function validates current revision, current
+    fence sequence, and exact issuance evidence under the same transaction-scoped
+    advisory lock used by issuance and authority transitions, then inserts the
+    measured external effect before the transaction commits.
     """
 
     def __init__(
@@ -325,9 +282,6 @@ class PostgresFencedTarget:
         authority_id: str,
         effect_id: str,
         effect_version: str,
-        scope_table: str = "narf_fence_scopes",
-        issuance_table: str = "narf_fence_issuance",
-        effect_table: str = "narf_fenced_effects",
         connect_timeout_seconds: int = 3,
     ):
         self._domain_identity = _postgres_domain_identity(dsn)
@@ -336,12 +290,7 @@ class PostgresFencedTarget:
         self.authority_id = _identifier(authority_id, "fencing_authority_id")
         self.effect_id = _identifier(effect_id, "effect_id")
         self.effect_version = _identifier(effect_version, "effect_version")
-        self.scope_table = _table(scope_table, "scope_table")
-        self.issuance_table = _table(issuance_table, "issuance_table")
-        self.effect_table = _table(effect_table, "effect_table")
-        if type(connect_timeout_seconds) is not int or not 1 <= connect_timeout_seconds <= 30:
-            raise NARFError("fence: invalid PostgreSQL connect timeout")
-        self.connect_timeout_seconds = connect_timeout_seconds
+        self.connect_timeout_seconds = _validate_timeout(connect_timeout_seconds)
 
     def domain_key(self):
         return self._domain_identity
@@ -359,70 +308,36 @@ class PostgresFencedTarget:
             raise NARFError("fence target: token binding mismatch")
 
         connection = _connect(self._dsn, self.connect_timeout_seconds)
+        row = None
         try:
             with connection:
                 with connection.cursor() as cursor:
-                    _lock_scope(cursor, self.fence_scope_id)
                     cursor.execute(
-                        f"SELECT authority_revision, fence_sequence "
-                        f"FROM {self.scope_table} WHERE scope_id = %s",
-                        (self.fence_scope_id,),
-                    )
-                    scope_row = cursor.fetchone()
-                    if scope_row is None:
-                        raise NARFError("fence target: unknown scope")
-                    current_revision = int(scope_row[0])
-                    current_sequence = int(scope_row[1])
-                    if current_revision != token.authority_revision:
-                        raise NARFError("fence target: stale authority revision")
-                    if current_sequence != token.fence_sequence:
-                        raise NARFError("fence target: stale fence sequence")
-
-                    cursor.execute(
-                        f"SELECT operation_id::text, authority_revision, effect_id, "
-                        f"effect_version, authority_id FROM {self.issuance_table} "
-                        "WHERE scope_id = %s AND fence_sequence = %s",
-                        (self.fence_scope_id, token.fence_sequence),
-                    )
-                    issuance = cursor.fetchone()
-                    expected = (
-                        token.operation_id,
-                        token.authority_revision,
-                        token.effect_id,
-                        token.effect_version,
-                        token.authority_id,
-                    )
-                    if issuance is None or tuple(issuance) != expected:
-                        raise NARFError("fence target: issuance evidence mismatch")
-
-                    cursor.execute(
-                        f"INSERT INTO {self.effect_table} "
-                        "(operation_id, scope_id, fence_sequence, authority_revision, "
-                        "effect_id, effect_version, payload) "
-                        "VALUES (%s::uuid, %s, %s, %s, %s, %s, %s) "
-                        "ON CONFLICT (operation_id) DO NOTHING RETURNING operation_id::text",
+                        "SELECT public.narf_commit_fenced_effect("
+                        "%s, %s::uuid, %s, %s, %s, %s, %s, %s)",
                         (
-                            token.operation_id,
                             self.fence_scope_id,
-                            token.fence_sequence,
+                            token.operation_id,
                             token.authority_revision,
+                            token.fence_sequence,
                             token.effect_id,
                             token.effect_version,
+                            token.authority_id,
                             payload,
                         ),
                     )
-                    inserted = cursor.fetchone()
-                    if inserted is None:
-                        raise NARFError("fence target: operation already committed")
-                    if inserted[0] != token.operation_id:
-                        raise NARFError("fence target: invalid commit result")
-        except NARFError:
-            raise
-        except Exception:
+                    row = cursor.fetchone()
+        except Exception as error:
+            known = _known_database_error(error, target=True)
+            if known is not None:
+                raise known from None
             raise NARFError("fence target: PostgreSQL commit transaction failed") from None
         finally:
             try:
                 connection.close()
             except Exception:
                 pass
+
+        if row is None or str(row[0]) != token.operation_id:
+            raise NARFError("fence target: invalid commit result")
         return "committed"
