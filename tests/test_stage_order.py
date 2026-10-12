@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import tempfile
 import threading
 import unittest
@@ -85,6 +86,13 @@ class StageOrderFixture:
             state_probe=self.state_probe,
             identity_probe=identity_probe,
         )
+
+    def reauthenticate_receipt(self, run_id, mutate):
+        path = self.store.directory / f"{run_id}.json"
+        envelope = json.loads(path.read_text())
+        mutate(envelope["payload"]["evidence"])
+        envelope["mac"] = self.store._mac(envelope["payload"])
+        path.write_text(json.dumps(envelope))
 
 
 class StageOrderTests(unittest.TestCase):
@@ -182,6 +190,98 @@ class StageOrderTests(unittest.TestCase):
             session.execute(requirement_id)
         self.assertEqual(session.finalize()["result"], "PASS")
 
+    def test_verification_receipts_bind_seed_stage_and_authenticated_predecessor(self):
+        contract_id = self.fx.freeze()
+        session = self.fx.session(contract_id)
+        first = session.execute("tests")
+        second = session.execute("security")
+        first_receipt = self.fx.store.load(first["evidence_id"])
+        second_receipt = self.fx.store.load(second["evidence_id"])
+
+        self.assertEqual(first_receipt["stage_index"], 0)
+        self.assertIsNone(first_receipt["predecessor_evidence_id"])
+        self.assertIsNone(first_receipt["predecessor_evidence_sha256"])
+        self.assertEqual(second_receipt["stage_index"], 1)
+        self.assertEqual(second_receipt["predecessor_evidence_id"], first["evidence_id"])
+        self.assertEqual(
+            second_receipt["predecessor_evidence_sha256"],
+            canonical_json_digest(first_receipt),
+        )
+        self.assertEqual(first_receipt["chain_seed_sha256"], second_receipt["chain_seed_sha256"])
+
+    def test_authenticated_predecessor_change_breaks_dependent_chain(self):
+        contract_id = self.fx.freeze()
+        session = self.fx.session(contract_id)
+        first = session.execute("tests")
+        session.execute("security")
+        session.execute("approval")
+
+        self.fx.reauthenticate_receipt(
+            first["evidence_id"],
+            lambda evidence: evidence.__setitem__("artifact_sha256", "0" * 64),
+        )
+        verdict = session.verdict()
+        self.assertEqual(verdict["result"], "BLOCKED")
+        self.assertEqual(verdict["reason"], "INVALID_EVIDENCE")
+
+    def test_authenticated_dependent_predecessor_digest_tamper_is_blocked(self):
+        contract_id = self.fx.freeze()
+        session = self.fx.session(contract_id)
+        session.execute("tests")
+        second = session.execute("security")
+        session.execute("approval")
+
+        self.fx.reauthenticate_receipt(
+            second["evidence_id"],
+            lambda evidence: evidence.__setitem__("predecessor_evidence_sha256", "0" * 64),
+        )
+        verdict = session.verdict()
+        self.assertEqual(verdict["result"], "BLOCKED")
+        self.assertEqual(verdict["reason"], "INVALID_EVIDENCE")
+
+    def test_decision_binds_final_chain_head(self):
+        contract_id = self.fx.freeze()
+        session = self.fx.session(contract_id)
+        last = None
+        for requirement_id in self.fx.stage_order:
+            last = session.execute(requirement_id)
+        decision = session.finalize()
+        receipt = self.fx.store.load(decision["decision_id"])
+        final_receipt = self.fx.store.load(last["evidence_id"])
+        self.assertEqual(receipt["chain_head_evidence_id"], last["evidence_id"])
+        self.assertEqual(receipt["chain_head_evidence_sha256"], canonical_json_digest(final_receipt))
+
+        self.fx.reauthenticate_receipt(
+            decision["decision_id"],
+            lambda evidence: evidence.__setitem__("chain_head_evidence_sha256", "0" * 64),
+        )
+        with self.assertRaises(NARFError):
+            session.execute_effect()
+
+    def test_chain_seed_is_session_bound(self):
+        contract_id = self.fx.freeze()
+        first_session = self.fx.session(contract_id)
+        second_session = self.fx.session(contract_id)
+        first = first_session.execute("tests")
+        second = second_session.execute("tests")
+        first_receipt = self.fx.store.load(first["evidence_id"])
+        second_receipt = self.fx.store.load(second["evidence_id"])
+        self.assertNotEqual(first_receipt["session_id"], second_receipt["session_id"])
+        self.assertNotEqual(first_receipt["chain_seed_sha256"], second_receipt["chain_seed_sha256"])
+
+    def test_failed_predecessor_blocks_later_producer_entry(self):
+        contract_id = self.fx.freeze()
+        bindings = [
+            VerifierBinding("check-a", "1", self.fx.producer("tests", "FAIL")),
+            VerifierBinding("check-b", "1", self.fx.producer("security")),
+            VerifierBinding("approve", "1", self.fx.producer("approval")),
+        ]
+        session = self.fx.session(contract_id, bindings=bindings)
+        self.assertEqual(session.execute("tests")["status"], "FAIL")
+        with self.assertRaises(NARFError):
+            session.execute("security")
+        self.assertEqual(self.fx.calls, ["tests"])
+
     def test_concurrent_same_stage_invokes_at_most_one_producer(self):
         contract_id = self.fx.freeze()
         entered = threading.Event()
@@ -220,6 +320,49 @@ class StageOrderTests(unittest.TestCase):
         self.assertEqual(calls, ["tests"])
         self.assertEqual(len(errors), 1)
         self.assertIn("NARFError", errors)
+
+    def test_a_b_race_never_enters_b_before_a_receipt_is_chain_head(self):
+        contract_id = self.fx.freeze()
+        entered = threading.Event()
+        release = threading.Event()
+        observed = []
+
+        def slow_first():
+            observed.append("tests-enter")
+            entered.set()
+            release.wait(timeout=2)
+            observed.append("tests-exit")
+            return VerifierResult("PASS", b"tests")
+
+        def second():
+            observed.append("security-enter")
+            return VerifierResult("PASS", b"security")
+
+        bindings = [
+            VerifierBinding("check-a", "1", slow_first),
+            VerifierBinding("check-b", "1", second),
+            VerifierBinding("approve", "1", self.fx.producer("approval")),
+        ]
+        session = self.fx.session(contract_id, bindings=bindings)
+        errors = []
+
+        def invoke(requirement_id):
+            try:
+                session.execute(requirement_id)
+            except Exception as error:
+                errors.append(type(error).__name__)
+
+        a = threading.Thread(target=invoke, args=("tests",))
+        b = threading.Thread(target=invoke, args=("security",))
+        a.start()
+        entered.wait(timeout=2)
+        b.start()
+        release.set()
+        a.join(timeout=2)
+        b.join(timeout=2)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(observed, ["tests-enter", "tests-exit", "security-enter"])
 
 
 if __name__ == "__main__":
