@@ -1,5 +1,6 @@
 """Public NARF reference implementation."""
 
+from .authority_revision import AuthorityRevisionGate, AuthorityRevisionSession, AuthoritySnapshot
 from .gate import (
     EffectBinding,
     FrozenState,
@@ -24,6 +25,9 @@ from .signed_witness import SignedWitnessAuthority
 
 __all__ = [
     "AllOfConsumptionAuthority",
+    "AuthorityRevisionGate",
+    "AuthorityRevisionSession",
+    "AuthoritySnapshot",
     "ConsumptionAuthority",
     "EffectBinding",
     "FileConsumptionAuthority",
