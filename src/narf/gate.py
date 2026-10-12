@@ -51,6 +51,10 @@ class VerifierBinding:
     verifier_id: str
     verifier_version: str
     producer: Callable[[], VerifierResult]
+    # Authenticated by the trusted host, never recovered from verifier output.
+    principal_id: str | None = None
+    trust_domain: str | None = None
+    verifier_profile: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +156,63 @@ def _requirements_digest(frozen_requirements: list[dict]) -> str:
     return canonical_json_digest(frozen_requirements)
 
 
+def _identity_role(policy: dict, verifier_id: str) -> str:
+    return "authority" if verifier_id == policy.get("authority_verifier_id") else "verifier:" + verifier_id
+
+
+def _freeze_identity_policy(policy: dict, requirements: list[dict]) -> dict:
+    """Validate policy syntax and snapshot host facts; missing facts block sessions."""
+    policy = json.loads(canonical_json(policy))
+    if (
+        type(policy) is not dict
+        or not {"actors", "separation"} <= set(policy)
+        or set(policy) - {"actors", "separation", "authority_verifier_id"}
+        or type(policy["actors"]) is not dict
+        or type(policy["separation"]) is not list
+    ):
+        raise NARFError("identity: actors and separation policy required")
+    if "authority_verifier_id" in policy:
+        _identifier(policy["authority_verifier_id"], "authority_verifier_id")
+    roles = {"builder", "authority"} | {
+        _identity_role(policy, item["verifier_id"]) for item in requirements
+    }
+    fields = {"principal_id", "trust_domain", "verifier_profile"}
+    for role, actor in policy["actors"].items():
+        if role not in roles or type(actor) is not dict or set(actor) - fields:
+            raise NARFError("identity: invalid actor policy")
+    for rule in policy["separation"]:
+        if (
+            type(rule) is not list or len(rule) != 3
+            or any(type(part) is not str for part in rule)
+            or rule[0] not in roles or rule[1] not in roles or rule[2] not in fields
+        ):
+            raise NARFError("identity: invalid separation rule")
+    return policy
+
+
+def _identity_string(value: object) -> bool:
+    return type(value) is str and bool(value.strip())
+
+
+def _valid_profile(profile: object) -> bool:
+    if type(profile) is not dict or type(profile.get("toolchain")) is not dict:
+        return False
+    toolchain = profile["toolchain"]
+    if any(not _identity_string(k) or not _identity_string(v) for k, v in toolchain.items()):
+        return False
+    if set(profile) == {"toolchain"}:
+        return bool(toolchain)
+    if set(profile) != {"model", "toolchain", "system_prompt_sha256", "verifier_prompt_sha256"}:
+        return False
+    model = profile["model"]
+    return (
+        type(model) is dict and set(model) == {"provider", "name", "version"}
+        and all(_identity_string(v) for v in model.values())
+        and all(type(profile[k]) is str and _SHA256_RE.fullmatch(profile[k]) is not None
+                for k in ("system_prompt_sha256", "verifier_prompt_sha256"))
+    )
+
+
 class ReceiptStore:
     """HMAC-authenticated, append-only receipt persistence.
 
@@ -248,6 +309,7 @@ class NARFGate:
         effect_id: str,
         effect_version: str,
         state: FrozenState,
+        identity_policy: dict | None = None,
     ) -> str:
         _identifier(task_id, "task_id")
         _identifier(effect_id, "effect_id")
@@ -273,6 +335,8 @@ class NARFGate:
             frozen.append(asdict(requirement))
 
         requirements_set_sha256 = _requirements_digest(frozen)
+        if identity_policy is not None:
+            identity_policy = _freeze_identity_policy(identity_policy, frozen)
 
         contract_id = str(uuid4())
         evidence = {
@@ -288,6 +352,13 @@ class NARFGate:
             "effect_version": effect_version,
             "state": asdict(state),
         }
+        if identity_policy is not None:
+            evidence.update(
+                evidence_version=2,
+                producer="host/narf-contract-v2",
+                identity_policy=identity_policy,
+                identity_policy_sha256=canonical_json_digest(identity_policy),
+            )
         self.__store.save(evidence)
         return contract_id
 
@@ -300,15 +371,23 @@ class NARFGate:
         effect_binding: EffectBinding,
         state_probe: Callable[[], FrozenState],
         revocation_probe: Callable[[str, str], object] | None = None,
+        identity_probe: Callable[[], dict] | None = None,
     ) -> "NARFSession":
         contract = self.__store.load(contract_id)
         if (
             not isinstance(contract, dict)
             or contract.get("evidence_type") != "narf.contract"
-            or contract.get("evidence_version") != 1
-            or contract.get("producer") != "host/narf-contract-v1"
+            or type(contract.get("evidence_version")) is not int
+            or contract["evidence_version"] not in (1, 2)
+            or contract.get("producer") != f"host/narf-contract-v{contract['evidence_version']}"
         ):
             raise NARFError("contract: authenticated NARF contract required")
+        identity_fields = {"identity_policy", "identity_policy_sha256"}
+        if (
+            contract["evidence_version"] == 1 and identity_fields.intersection(contract)
+            or contract["evidence_version"] == 2 and not identity_fields <= set(contract)
+        ):
+            raise NARFError("contract: invalid identity version binding")
         if not isinstance(task, dict):
             raise NARFError("task: object required")
         if not callable(state_probe):
@@ -340,6 +419,13 @@ class NARFGate:
             errors.append("INVALID_CONTRACT")
         if contract.get("requirements_set_sha256") != _requirements_digest(requirements):
             errors.append("INVALID_CONTRACT")
+        if contract["evidence_version"] == 2:
+            try:
+                policy = _freeze_identity_policy(contract["identity_policy"], requirements)
+                if canonical_json_digest(policy) != contract["identity_policy_sha256"]:
+                    errors.append("INVALID_CONTRACT")
+            except (NARFError, KeyError, TypeError):
+                errors.append("INVALID_CONTRACT")
         expected = {item.get("verifier_id") for item in requirements if isinstance(item, dict)}
         if set(bindings) != expected:
             errors.append("VERIFIER_UNAVAILABLE")
@@ -366,6 +452,7 @@ class NARFGate:
             state_probe,
             revocation_probe,
             sorted(set(errors)),
+            identity_probe,
         )
 
 
@@ -382,6 +469,7 @@ class NARFSession:
         state_probe: Callable[[], FrozenState],
         revocation_probe: Callable[[str, str], object] | None,
         errors: list[str],
+        identity_probe: Callable[[], dict] | None = None,
     ):
         self.__store = store
         self.__contract = json.loads(canonical_json(contract))
@@ -390,12 +478,73 @@ class NARFSession:
         self.__effect = effect
         self.__state_probe = state_probe
         self.__revocation_probe = revocation_probe
+        self.__identity_probe = identity_probe
         self.__errors = list(errors)
         self.__runs: dict[str, str] = {}
         self.__decision: dict | None = None
         self.__closed = False
         self.__effect_used = False
         self.__inhibitors: list[str] = []
+        self.__identity_stale: str | None = None
+
+    def _identity_context(self) -> dict:
+        if self.__contract["evidence_version"] == 1:
+            return {}
+        return {"identity_policy_sha256": self.__contract["identity_policy_sha256"]}
+
+    def _identity_error(self) -> str | None:
+        if self.__contract["evidence_version"] == 1:
+            return None
+        policy = self.__contract["identity_policy"]
+        actors = policy["actors"]
+        verifier_ids = {r["verifier_id"] for r in self.__contract["requirements"]}
+        roles = {"builder"} | set(actors) | {_identity_role(policy, v) for v in verifier_ids}
+        roles.update(role for rule in policy["separation"] for role in rule[:2])
+        if ("authority" in roles or "authority_verifier_id" in policy) and policy.get("authority_verifier_id") not in verifier_ids:
+            return "AUTHORITY_UNAVAILABLE"
+        for role in roles:
+            actor = actors.get(role, {})
+            if (
+                not _identity_string(actor.get("principal_id"))
+                or "trust_domain" in actor and not _identity_string(actor["trust_domain"])
+                or "verifier_profile" in actor and not _valid_profile(actor["verifier_profile"])
+            ):
+                return "IDENTITY_UNAVAILABLE"
+        for left, right, field in policy["separation"]:
+            valid = _valid_profile if field == "verifier_profile" else _identity_string
+            if not valid(actors[left].get(field)) or not valid(actors[right].get(field)):
+                return "IDENTITY_UNAVAILABLE"
+            if actors[left][field] == actors[right][field]:
+                return "IDENTITY_SEPARATION_VIOLATED"
+        # Recheck mutable profile objects as well as the current host identities.
+        try:
+            for verifier_id in verifier_ids:
+                actor = actors[_identity_role(policy, verifier_id)]
+                binding = self.__bindings[verifier_id]
+                if any(canonical_json(getattr(binding, field)) != canonical_json(value)
+                       for field, value in actor.items()):
+                    return "IDENTITY_BINDING_CHANGED"
+        except Exception:
+            return "IDENTITY_BINDING_CHANGED"
+        try:
+            current = self.__identity_probe()
+            if type(current) is not dict:
+                return "IDENTITY_UNAVAILABLE"
+            if canonical_json(current) != canonical_json(actors):
+                return "IDENTITY_CHANGED"
+        except Exception:
+            return "IDENTITY_UNAVAILABLE"
+        return None
+
+    def _identity_state_error(self) -> str | None:
+        if self.__contract["evidence_version"] == 1:
+            return None
+        if self.__identity_stale is not None:
+            return self.__identity_stale
+        error = self._identity_error()
+        if error is not None and (self.__runs or self.__decision is not None):
+            self.__identity_stale = error
+        return error
 
     @property
     def session_id(self) -> str:
@@ -425,6 +574,7 @@ class NARFSession:
         return value
 
     def _current_state_error(self) -> str | None:
+        identity_error = self._identity_state_error()
         if self._revoked():
             return "REVOKED"
         if self.__store.load(self.__contract["run_id"]) != self.__contract:
@@ -440,7 +590,7 @@ class NARFSession:
             return "GOALPOST_CHANGED"
         if current.policy_sha256 != frozen["policy_sha256"]:
             return "POLICY_CHANGED"
-        return None
+        return identity_error
 
     def execute(self, requirement_id: str) -> dict:
         if self.__closed:
@@ -483,19 +633,7 @@ class NARFSession:
 
         run_id = str(uuid4())
         evidence = {
-            "evidence_type": "narf.verification",
-            "evidence_version": 1,
-            "producer": "host/narf-verifier-v1",
-            "run_id": run_id,
-            "contract_id": self.__contract["run_id"],
-            "session_id": self.__session_id,
-            "task_id": self.__contract["task_id"],
-            "task_sha256": self.__contract["task_sha256"],
-            "requirements_set_sha256": self.__contract["requirements_set_sha256"],
-            "requirement_id": requirement_id,
-            "verifier_id": binding.verifier_id,
-            "verifier_version": binding.verifier_version,
-            "state": self.__contract["state"],
+            **self._expected_evidence(requirement, run_id),
             "status": status,
             "reason": reason,
             "artifact_sha256": artifact_sha256,
@@ -511,10 +649,11 @@ class NARFSession:
 
     def _expected_evidence(self, requirement: dict, run_id: str) -> dict:
         binding = self.__bindings[requirement["verifier_id"]]
-        return {
+        version = self.__contract["evidence_version"]
+        expected = {
             "evidence_type": "narf.verification",
-            "evidence_version": 1,
-            "producer": "host/narf-verifier-v1",
+            "evidence_version": version,
+            "producer": f"host/narf-verifier-v{version}",
             "run_id": run_id,
             "contract_id": self.__contract["run_id"],
             "session_id": self.__session_id,
@@ -526,6 +665,20 @@ class NARFSession:
             "verifier_version": binding.verifier_version,
             "state": self.__contract["state"],
         }
+        if version == 2:
+            policy = self.__contract["identity_policy"]
+            role = _identity_role(policy, binding.verifier_id)
+            actor = policy["actors"][role]
+            expected.update(
+                **self._identity_context(),
+                identity_role=role,
+                principal_id=actor["principal_id"],
+                trust_domain=actor.get("trust_domain"),
+                verifier_profile=actor.get("verifier_profile"),
+                effect_id=self.__contract["effect_id"],
+                effect_version=self.__contract["effect_version"],
+            )
+        return expected
 
     def _evaluate(self) -> dict:
         if self.__errors:
@@ -583,10 +736,12 @@ class NARFSession:
         if self.__decision is None:
             return False
         decision = self.__store.load(self.__decision["decision_id"])
+        version = self.__contract["evidence_version"]
         expected = {
             "evidence_type": "narf.decision",
-            "evidence_version": 1,
-            "producer": "host/narf-gate-v1",
+            "evidence_version": version,
+            "producer": f"host/narf-gate-v{version}",
+            **self._identity_context(),
             "run_id": self.__decision["decision_id"],
             "contract_id": self.__contract["run_id"],
             "session_id": self.__session_id,
@@ -612,10 +767,12 @@ class NARFSession:
         self.__closed = True
         verdict = self.verdict()
         decision_id = str(uuid4())
+        version = self.__contract["evidence_version"]
         evidence = {
             "evidence_type": "narf.decision",
-            "evidence_version": 1,
-            "producer": "host/narf-gate-v1",
+            "evidence_version": version,
+            "producer": f"host/narf-gate-v{version}",
+            **self._identity_context(),
             "run_id": decision_id,
             "contract_id": self.__contract["run_id"],
             "session_id": self.__session_id,
@@ -655,10 +812,12 @@ class NARFSession:
                 + self.__effect.effect_version,
             )
         )
+        version = self.__contract["evidence_version"]
         consumed = {
             "evidence_type": "narf.effect",
-            "evidence_version": 1,
-            "producer": "host/narf-gate-v1",
+            "evidence_version": version,
+            "producer": f"host/narf-gate-v{version}",
+            **self._identity_context(),
             "run_id": effect_run_id,
             "contract_id": self.__contract["run_id"],
             "session_id": self.__session_id,

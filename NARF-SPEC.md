@@ -19,6 +19,7 @@ PASS iff
   AND evidence coverage is N/N
   AND every required verifier result is PASS
   AND evidence is authentic and session-bound
+  AND any configured identity, domain, profile and separation conditions hold
   AND no inhibitor exists
   AND the contract is not revoked
 ```
@@ -43,6 +44,16 @@ Only host-bound verifier producers may create accepted verifier evidence. Each v
 
 A developer or worker result outside the bound verifier route is not NARF evidence. Missing, malformed, tampered, replayed, wrong-task, wrong-session, wrong-verifier, or wrong-state evidence must not produce PASS.
 
+When explicitly configured, [identity separation](IDENTITY-BOUNDARY.md) adds
+host-authenticated principal, trust-domain and optional verifier-profile facts.
+`verifier_id` names a logical check; `principal_id` names its authenticated
+controller; `trust_domain` describes shared administrative control;
+`verifier_profile` describes the verification method. They are distinct axes.
+Required authority approval uses a frozen required verifier route. A principal
+label or candidate-supplied profile never substitutes for authenticated evidence.
+Identity-enabled contracts use evidence version 2; unconfigured contracts retain
+the version-1 format and behavior.
+
 ## 5. Result semantics
 
 `PASS`: all frozen requirements have authentic PASS evidence and all current-state and inhibitor checks are clear.
@@ -54,6 +65,11 @@ A developer or worker result outside the bound verifier route is not NARF eviden
 ## 6. State changes
 
 The gate rechecks frozen state before each verifier run and after the verifier returns. Candidate, goalpost, policy, contract, revocation, or state-probe changes must fail closed.
+
+For identity-enabled contracts, the same checks also revalidate frozen identity
+and profile facts using the trusted-host probe and verifier bindings, including
+immediately before effect execution. Profile separation is optional and driven
+by the frozen policy; a configured profile cannot change after freeze.
 
 When a revocation probe is configured, only the exact boolean value `False` establishes a clear non-revoked state. `True`, probe exceptions, and non-boolean or otherwise unavailable probe results fail closed as revoked/unavailable authority.
 

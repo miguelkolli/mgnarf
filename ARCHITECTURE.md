@@ -18,6 +18,12 @@ The reference implementation lives under `src/narf/` and uses only the Python st
 
 `NARFSession` owns verifier execution, evidence evaluation, final decision, revalidation, and single-use effect consumption.
 
+The optional [identity boundary](IDENTITY-BOUNDARY.md) extends `NARFGate` and
+`VerifierBinding` with a frozen host-owned actor/separation policy and a current
+identity probe. Principal, trust domain and verifier profile are independent
+facts. Authority approval reuses required verifier evidence. Identity-enabled
+contracts and receipts use version 2; version-1 behavior remains the default.
+
 ## Invariants
 
 - Missing, stale, invalid, incomplete, revoked, mismatched, or unauthenticated evidence never manufactures PASS.
