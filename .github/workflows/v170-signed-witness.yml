@@ -1,0 +1,123 @@
+name: NARF v1.70 signed witness exact candidate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: narf-v170-signed-witness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  signed-witness:
+    name: v1.70 exact signed witness (4 protected + 1 limitation)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      CI_EVIDENCE: /tmp/narf-v170-signed-witness-evidence
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      NARF_POSTGRES_ADMIN_DSN: postgresql://narf_admin:narf-admin-ci@127.0.0.1:5432/narf
+      NARF_POSTGRES_APP_DSN: postgresql://narf_app:narf-app-ci@127.0.0.1:5432/narf
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_USER: narf_admin
+          POSTGRES_PASSWORD: narf-admin-ci
+          POSTGRES_DB: narf
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U narf_admin -d narf"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - name: Checkout exact candidate revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ env.EXPECTED_SHA }}
+
+      - name: Require exact candidate checkout
+        shell: bash
+        run: |
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          printf 'candidate_sha=%s\n' "$actual"
+
+      - name: Install signed-witness boundary drivers
+        run: >-
+          python3 -m pip install --disable-pip-version-check --no-input
+          "psycopg[binary]>=3.2,<4" "cryptography>=43,<48"
+
+      - name: Bootstrap least-privilege PostgreSQL ledger
+        shell: bash
+        run: |
+          mkdir -p "$CI_EVIDENCE"
+          python3 - <<'PY'
+          import os, psycopg
+          with psycopg.connect(os.environ["NARF_POSTGRES_ADMIN_DSN"], autocommit=True) as connection:
+              with connection.cursor() as cursor:
+                  cursor.execute("CREATE ROLE narf_app LOGIN PASSWORD 'narf-app-ci'")
+                  cursor.execute("""
+                      CREATE TABLE narf_consumption_ledger (
+                          token uuid PRIMARY KEY,
+                          authority_version text NOT NULL,
+                          consumed_at timestamptz NOT NULL DEFAULT clock_timestamp()
+                      )
+                  """)
+                  cursor.execute("REVOKE ALL ON narf_consumption_ledger FROM PUBLIC")
+                  cursor.execute("GRANT SELECT, INSERT ON narf_consumption_ledger TO narf_app")
+          PY
+
+      - name: Run signed witness boundary and retain case output
+        id: witness
+        shell: bash
+        run: |
+          set +e
+          python3 tools/test_signed_witness.py \
+            --output "$CI_EVIDENCE/results" \
+            --app-dsn "$NARF_POSTGRES_APP_DSN" \
+            --admin-dsn "$NARF_POSTGRES_ADMIN_DSN" \
+            2>&1 | tee "$CI_EVIDENCE/harness.log"
+          rc=${PIPESTATUS[0]}
+          printf '%s\n' "$rc" > "$CI_EVIDENCE/harness-exit-code.txt"
+          echo '--- signed witness case results ---'
+          for file in "$CI_EVIDENCE"/results/*.json; do
+            echo "### $file"
+            cat "$file"
+          done
+          exit "$rc"
+
+      - name: Preserve signed witness evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: narf-v170-signed-witness-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.CI_EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Require exact signed witness boundary
+        if: always()
+        shell: bash
+        run: |
+          python3 - "$CI_EVIDENCE/results/summary.json" "$CI_EVIDENCE/harness-exit-code.txt" <<'PY'
+          import json, sys
+          from pathlib import Path
+          summary = json.loads(Path(sys.argv[1]).read_text())
+          rc = int(Path(sys.argv[2]).read_text().strip())
+          assert rc == 0, {"harness_exit_code": rc, "summary": summary}
+          assert summary["result"] == "BOUNDARY_CONFIRMED", summary
+          assert summary["planned_cases"] == 5, summary
+          assert summary["counts"] == {"PASS": 4, "LIMITATION_CONFIRMED": 1, "FAIL": 0}, summary
+          assert summary["source_unchanged"], summary
+          print(json.dumps(summary, indent=2))
+          PY
