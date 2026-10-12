@@ -87,6 +87,9 @@ class _DeadlineRawReader(io.RawIOBase):
         super().__init__()
         self._sock = sock
         self._deadline = deadline
+        # Use the socket's own unbuffered file object so HTTP/1.0 connection
+        # teardown preserves the response stream exactly like socket.makefile().
+        self._raw = sock.makefile("rb", buffering=0)
 
     def readable(self) -> bool:
         return True
@@ -94,14 +97,14 @@ class _DeadlineRawReader(io.RawIOBase):
     def readinto(self, buffer) -> int:
         self._sock.settimeout(_remaining_seconds(self._deadline))
         try:
-            return self._sock.recv_into(buffer)
+            return self._raw.readinto(buffer)
         except TimeoutError:
             raise TimeoutError("signed witness deadline exceeded") from None
 
     def close(self) -> None:
         if not self.closed:
             try:
-                self._sock.close()
+                self._raw.close()
             finally:
                 super().close()
 
@@ -232,9 +235,11 @@ class SignedWitnessAuthority(ConsumptionAuthority):
         except Exception:
             raise NARFError("effect: signed witness unavailable") from None
         finally:
-            if response is not None:
-                response.close()
-            connection.close()
+            try:
+                if response is not None:
+                    response.close()
+            finally:
+                connection.close()
 
         if len(raw) > _MAX_RESPONSE_BYTES:
             raise NARFError("effect: signed witness response too large")

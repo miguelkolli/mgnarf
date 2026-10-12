@@ -12,8 +12,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.error
-import urllib.request
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +23,7 @@ from narf import (  # noqa: E402
     AllOfConsumptionAuthority,
     EffectBinding,
     FrozenState,
+    NARFError,
     OperationBoundEffectExecutor,
     OperationBoundGate,
     PostgresConsumptionAuthority,
@@ -193,25 +192,28 @@ def signed_authority(witness: WitnessProcess):
     )
 
 
-def inject_lost_signed_response(call):
-    original = urllib.request.urlopen
+def inject_lost_signed_response(authority: SignedWitnessAuthority, call):
+    """Lose one acknowledgement after the witness has durably handled the request.
+
+    Inject at the authority response boundary rather than inside a particular
+    HTTP client implementation so the ambiguity test remains transport-neutral.
+    """
+    original = authority._request
     used = False
 
-    def lose_after_server_response(request, *args, **kwargs):
+    def lose_after_server_response(operation, token):
         nonlocal used
-        response = original(request, *args, **kwargs)
+        payload = original(operation, token)
         if not used:
             used = True
-            response.read()
-            response.close()
-            raise urllib.error.URLError("injected signed-witness response loss")
-        return response
+            raise NARFError("effect: signed witness unavailable")
+        return payload
 
-    urllib.request.urlopen = lose_after_server_response
+    authority._request = lose_after_server_response
     try:
         return attempt(call)
     finally:
-        urllib.request.urlopen = original
+        authority._request = original
 
 
 class CommitThenLoseAck:
@@ -270,11 +272,15 @@ def run_signed_response_loss(root: Path, app_dsn: str, admin_dsn: str, restart: 
     events = root / "events.jsonl"
     try:
         session, first_contract = make_session(root / "host-first", operation_id, events)
+        signed = signed_authority(witness)
         authority = AllOfConsumptionAuthority([
-            signed_authority(witness),
+            signed,
             PostgresConsumptionAuthority(app_dsn, table=TABLE),
         ])
-        first = inject_lost_signed_response(lambda: OperationBoundEffectExecutor(authority).execute(session))
+        first = inject_lost_signed_response(
+            signed,
+            lambda: OperationBoundEffectExecutor(authority).execute(session),
+        )
         witness_reserved_after_loss = signed_authority(witness).is_reserved(operation_id)
 
         if restart:
