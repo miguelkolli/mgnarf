@@ -45,6 +45,35 @@ opening the session and capture that immutable serialization in the callback.
 Do not let the callback select its target from an unrelated mutable caller
 object. The host's state probe must report relevant input changes.
 
+## Authenticate identity and verifier-profile provenance
+
+For the optional [identity policy](IDENTITY-BOUNDARY.md), the host authenticates
+builder, verifier and authority principals and defines their trust domains.
+It must bind each producer to those facts outside candidate control, and supply
+the same current actor map through `identity_probe`. A probe that merely echoes
+the frozen policy cannot detect changes in the underlying authority.
+
+The host also attests any configured verifier profile: actual model/provider/
+version, exact system and verifier prompt digests, and relevant toolchain
+versions. Candidate output, producer result payloads and self-reported agent
+labels must never populate trusted identity or profile fields. An authenticated
+principal identifies the controlling actor, not its model and prompt.
+
+An authority producer must validate a current approval for the exact frozen
+task, candidate and effect before returning PASS. NARF wraps that result in
+contract/session-bound evidence; it cannot authenticate a human or detect a host
+adapter that blindly reuses an old external approval. Authority withdrawal must
+reach the host's revocation probe or inhibitor path.
+
+Identity and profile changes must participate in the same authority lock or
+transaction as state/revocation changes and the complete `execute_effect()`
+call. Probes must read that protected authority. Snapshot comparisons cannot
+detect a change-and-restore occurring entirely between reads; hosts needing
+that guarantee must bind a monotonic authority revision into their state and
+serialize changes. Distinct profiles prove different declared methods, not
+independent reasoning or distinct physical infrastructure. The reference API
+does not prove wall-clock stage order or authenticate any particular provider.
+
 ## Protect receipt history and keys
 
 The receipt key, store, store parent, backups, frozen bindings, verifier

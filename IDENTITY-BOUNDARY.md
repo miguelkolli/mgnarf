@@ -1,6 +1,8 @@
 # Identity and separation-of-duties boundary
 
-Status: design freeze for the first identity-boundary implementation. This document defines the intended security semantics before runtime code is changed.
+Status: first opt-in reference implementation. The identity design was frozen
+before runtime work; verifier-profile provenance was added to that design before
+implementing the API. The original version-1 contract semantics remain available.
 
 ## 1. Problem
 
@@ -9,6 +11,9 @@ NARF already binds PASS evidence to the exact frozen task, candidate, requiremen
 A different question remains: who produced the required evidence?
 
 Two verifier IDs are not automatically two independent authorities. The same agent, credential, key, account, process owner or administrative domain can present multiple logical verifier names. A policy that requires independent review therefore needs identity and trust-domain bindings in addition to verifier names.
+
+Independent actors may also share the same verification method. Optional profile
+constraints address that separate axis; they do not replace identity constraints.
 
 The target flow is:
 
@@ -42,6 +47,26 @@ This answers: **which principals may still fail together?**
 
 Different `principal_id` values do not prove independence when the policy also requires distinct trust domains.
 
+### verifier_profile
+
+Host-authenticated provenance describing **how verification is produced**. This
+is independent of both the controlling `principal_id` and its `trust_domain`.
+For model-based verification it records provider, model, model version, system
+prompt digest, verifier prompt digest, and relevant toolchain versions. It must
+not contain an agent ID or other arbitrary per-run label to manufacture diversity.
+`principal_id` must never be redefined as model plus prompt.
+
+Different principals (including differently named agents) may use the same
+profile. Policy may optionally require distinct profiles. Without that rule,
+sharing a profile alone does not block PASS. When profile provenance is required,
+missing or invalid provenance blocks PASS. Any frozen profile change stales the
+evidence, even if the replacement would also satisfy separation.
+
+The first implementation compares complete canonical profiles for inequality;
+it does not prove epistemic independence or enforce diversity of each individual
+model, provider, prompt, or toolchain field. These are host-attested facts, not
+facts inferred from candidate output.
+
 ### role
 
 The policy-visible function of an actor, such as `builder`, `verifier:<id>`, or `authority`.
@@ -63,6 +88,7 @@ builder.principal_id != verifier:security.principal_id
 verifier:tests.principal_id != verifier:security.principal_id
 builder.trust_domain != verifier:security.trust_domain
 authority.principal_id != builder.principal_id
+verifier:tests.verifier_profile != verifier:security.verifier_profile
 ```
 
 The runtime must fail closed when it cannot establish a required identity property.
@@ -130,6 +156,7 @@ principal_id
 trust_domain when required by policy
 status
 artifact digest
+verifier_profile when required by policy
 ```
 
 Changing a verifier's required identity after contract freeze is a goalpost/policy change, not a harmless rebinding.
@@ -176,6 +203,10 @@ Before the feature can be called PASS, tests must cover at least these cases:
 12. candidate-controlled output tries to self-assert a different principal/trust domain -> ignored or BLOCKED, never PASS;
 13. correct independent identities plus all existing NARF conditions -> PASS;
 14. identity-enabled PASS remains single-use and pre-effect revalidation still applies.
+15. different principals sharing one verifier profile remain allowed without a profile-separation rule;
+16. the same model and prompts under different agent IDs fail a distinct-profile rule;
+17. distinct-profile policy requires authenticated, complete profile provenance;
+18. a frozen profile change before verification, during verification, or before effect blocks authorization.
 
 ## 10. Backward compatibility
 
@@ -203,3 +234,62 @@ Runtime implementation may begin only if the following remain true on the frozen
 - no existing PASS is relabeled merely by documentation.
 
 The implementation should then be introduced with focused unit/adversarial tests first, followed by the smallest runtime change needed to satisfy them.
+
+## 12. Reference API extension
+
+`NARFGate.freeze_contract(..., identity_policy=...)` accepts a strict canonical
+JSON policy with `actors`, `separation`, and optional `authority_verifier_id`.
+Each actor records `principal_id` and optional `trust_domain` and
+`verifier_profile`. Roles are `builder`, `verifier:<verifier_id>`, and `authority`.
+An authority route must occur in the frozen requirements; that route uses the
+`authority` role instead of `verifier:<id>`. An authority identity alone never
+counts as an approval. All configured roles and all required verifier routes
+require principal identities. Separation triples select `principal_id`,
+`trust_domain`, or `verifier_profile`.
+
+Profiles use one of these canonical shapes:
+
+```json
+{"toolchain": {"unit-runner": "3.2"}}
+```
+
+```json
+{
+  "model": {"provider": "example-provider", "name": "review-model", "version": "pinned-version"},
+  "system_prompt_sha256": "<64 lowercase hex digits>",
+  "verifier_prompt_sha256": "<64 lowercase hex digits>",
+  "toolchain": {"review-adapter": "1.0"}
+}
+```
+
+Tool-only profiles require a nonempty toolchain. Model profiles require all
+model fields and both prompt digests; their toolchain may be empty when no tools
+are relevant. Toolchain names and versions must be nonempty strings. Unknown
+profile fields are invalid. Identity strings are opaque host-defined names;
+NARF does not interpret providers, accounts, prompts, or model names.
+
+`VerifierBinding` gains optional `principal_id`, `trust_domain`, and
+`verifier_profile` fields, supplied by the host that authenticates the producer.
+`open_session(..., identity_probe=...)` requires a trusted callback returning
+the current actor map for identity-enabled contracts. The gate checks it before
+and after verification and at finalization and effect entry. Frozen fields and
+profile provenance must match the producer binding and the current host facts.
+
+Configured profiles are required and frozen even without a separation rule.
+Profile separation additionally requires complete profiles on both named roles.
+Hosts that do not configure profiles retain principal/domain-only enforcement.
+
+Identity-enabled contracts and their receipts use evidence version 2 so a
+version-1 gate rejects them instead of silently ignoring the new conditions.
+Omitting `identity_policy` retains version-1 contracts and receipt semantics.
+The authenticated contract binds the complete policy and its canonical digest;
+verification evidence additionally binds the actor, principal, domain, profile,
+policy digest and effect identity/version. Decision and consumption evidence
+remain bound to that contract and policy digest.
+
+This API is available directly on `NARFGate`. Existing host examples and the
+`OperationBoundGate` convenience wrapper retain their version-1 interfaces;
+they do not automatically opt into identity enforcement. Invalid policy syntax
+raises `NARFError`; missing, mismatched or insufficient required identity facts
+produce a `BLOCKED` session. Attempted execution through a blocked session raises
+`NARFError` before invoking the producer or effect.
