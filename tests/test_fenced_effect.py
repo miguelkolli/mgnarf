@@ -49,15 +49,16 @@ class MemoryOperationAuthority(ConsumptionAuthority):
 
 
 class MemoryFencingAuthority(FencingAuthority):
-    def __init__(self, snapshot_probe, *, mutate=None):
+    def __init__(self, snapshot_probe, *, authority_id="test-fence-authority", mutate=None):
         self.snapshot_probe = snapshot_probe
         self.sequences = {}
         self.calls = 0
+        self._authority_id = authority_id
         self.mutate = mutate
 
     @property
     def authority_id(self) -> str:
-        return "test-fence-authority"
+        return self._authority_id
 
     def acquire(
         self,
@@ -121,6 +122,7 @@ class FencedEffectTests(unittest.TestCase):
         self.snapshot = AuthoritySnapshot(11, deepcopy(self.policy["actors"]))
         self.operation_id = str(uuid4())
         self.fence_scope_id = "deployment:production-a"
+        self.fencing_authority_id = "test-fence-authority"
         self.received = []
 
     def authority_probe(self):
@@ -145,6 +147,7 @@ class FencedEffectTests(unittest.TestCase):
             self.task,
             operation_id=operation_id or self.operation_id,
             fence_scope_id=fence_scope_id or self.fence_scope_id,
+            fencing_authority_id=self.fencing_authority_id,
             task_id="fenced-effect-test",
             requirements=(self.requirement,),
             effect_id="deploy",
@@ -172,7 +175,10 @@ class FencedEffectTests(unittest.TestCase):
 
     def executor(self, operation_authority=None, fencing_authority=None):
         operation_authority = operation_authority or MemoryOperationAuthority()
-        fencing_authority = fencing_authority or MemoryFencingAuthority(self.authority_probe)
+        fencing_authority = fencing_authority or MemoryFencingAuthority(
+            self.authority_probe,
+            authority_id=self.fencing_authority_id,
+        )
         return (
             FencedOperationEffectExecutor(operation_authority, fencing_authority),
             operation_authority,
@@ -197,6 +203,7 @@ class FencedEffectTests(unittest.TestCase):
         self.assertEqual(token.effect_id, "deploy")
         self.assertEqual(token.effect_version, "1")
         self.assertEqual(token.fence_sequence, 1)
+        self.assertEqual(token.authority_id, self.fencing_authority_id)
 
         fence_rows = []
         for path in self.store.directory.glob("*.json"):
@@ -207,6 +214,24 @@ class FencedEffectTests(unittest.TestCase):
         self.assertEqual(fence_rows[0]["operation_id"], self.operation_id)
         self.assertEqual(fence_rows[0]["fence_scope_id"], self.fence_scope_id)
         self.assertEqual(fence_rows[0]["fence_sequence"], 1)
+        self.assertEqual(fence_rows[0]["authority_id"], self.fencing_authority_id)
+
+    def test_wrong_fencing_authority_is_rejected_before_operation_reservation(self):
+        gate = self.gate()
+        session = self.session(gate, self.freeze(gate))
+        operation_authority = MemoryOperationAuthority()
+        wrong_authority = MemoryFencingAuthority(
+            self.authority_probe,
+            authority_id="other-fence-authority",
+        )
+        executor = FencedOperationEffectExecutor(operation_authority, wrong_authority)
+
+        with self.assertRaisesRegex(NARFError, "authority binding mismatch"):
+            executor.execute(session)
+
+        self.assertEqual(operation_authority.calls, 0)
+        self.assertEqual(wrong_authority.calls, 0)
+        self.assertEqual(self.received, [])
 
     def test_revision_change_before_executor_does_not_reserve_operation(self):
         gate = self.gate()
@@ -229,7 +254,10 @@ class FencedEffectTests(unittest.TestCase):
             self.snapshot = AuthoritySnapshot(12, deepcopy(self.policy["actors"]))
 
         operation_authority = MemoryOperationAuthority(on_reserve=advance_revision)
-        fencing_authority = MemoryFencingAuthority(self.authority_probe)
+        fencing_authority = MemoryFencingAuthority(
+            self.authority_probe,
+            authority_id=self.fencing_authority_id,
+        )
         executor, _, _ = self.executor(operation_authority, fencing_authority)
 
         with self.assertRaisesRegex(NARFError, "authority revision changed"):
@@ -255,7 +283,11 @@ class FencedEffectTests(unittest.TestCase):
             )
 
         operation_authority = MemoryOperationAuthority()
-        fencing_authority = MemoryFencingAuthority(self.authority_probe, mutate=wrong_scope)
+        fencing_authority = MemoryFencingAuthority(
+            self.authority_probe,
+            authority_id=self.fencing_authority_id,
+            mutate=wrong_scope,
+        )
         executor, _, _ = self.executor(operation_authority, fencing_authority)
 
         with self.assertRaisesRegex(NARFError, "token binding mismatch"):
@@ -281,7 +313,9 @@ class FencedEffectTests(unittest.TestCase):
 
         operation_authority = MemoryOperationAuthority()
         fencing_authority = MemoryFencingAuthority(
-            self.authority_probe, mutate=negative_sequence
+            self.authority_probe,
+            authority_id=self.fencing_authority_id,
+            mutate=negative_sequence,
         )
         executor, _, _ = self.executor(operation_authority, fencing_authority)
 
@@ -328,7 +362,10 @@ class FencedEffectTests(unittest.TestCase):
     def test_same_operation_on_fresh_contract_cannot_acquire_second_fence(self):
         gate = self.gate()
         operation_authority = MemoryOperationAuthority()
-        fencing_authority = MemoryFencingAuthority(self.authority_probe)
+        fencing_authority = MemoryFencingAuthority(
+            self.authority_probe,
+            authority_id=self.fencing_authority_id,
+        )
         executor, _, _ = self.executor(operation_authority, fencing_authority)
 
         first = self.session(gate, self.freeze(gate))
@@ -344,7 +381,10 @@ class FencedEffectTests(unittest.TestCase):
     def test_different_operations_same_scope_receive_comparable_sequences(self):
         gate = self.gate()
         operation_authority = MemoryOperationAuthority()
-        fencing_authority = MemoryFencingAuthority(self.authority_probe)
+        fencing_authority = MemoryFencingAuthority(
+            self.authority_probe,
+            authority_id=self.fencing_authority_id,
+        )
         executor, _, _ = self.executor(operation_authority, fencing_authority)
 
         first_op = str(uuid4())

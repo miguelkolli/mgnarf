@@ -1,13 +1,17 @@
 """Opt-in fenced-effect transport for the composed MGnarf host path.
 
 This module implements the Layer A/B contract from FENCED-EFFECT-BOUNDARY.md:
-MGnarf binds a fence scope, reserves the stable semantic operation before fence
-issuance, validates a trusted fencing-authority token, persists authenticated
-fence evidence, and transports that exact token into a fenced effect adapter.
+MGnarf binds a fence scope and fencing-authority identity before verification,
+reserves the stable semantic operation before fence issuance, validates a
+trusted fencing-authority token, persists authenticated fence evidence, and
+transports that exact token into a fenced effect adapter.
 
 It does not by itself prove that an arbitrary external target rejects stale
 fences at commit. That stronger claim requires a target/authority integration
 that enforces the fence at the external commit boundary.
+
+The wrapper is an integration guard, not a sandbox against a malicious trusted
+host deliberately abandoning the fenced API and invoking lower-level NARF APIs.
 """
 from __future__ import annotations
 
@@ -158,6 +162,7 @@ class FencedOperationSession:
         "__store",
         "__operation_id",
         "__fence_scope_id",
+        "__fencing_authority_id",
         "__effect_id",
         "__effect_version",
         "__bridge",
@@ -170,6 +175,7 @@ class FencedOperationSession:
         *,
         operation_id: str,
         fence_scope_id: str,
+        fencing_authority_id: str,
         effect_id: str,
         effect_version: str,
         bridge: _FencedEffectBridge,
@@ -178,6 +184,9 @@ class FencedOperationSession:
         self.__store = store
         self.__operation_id = _canonical_uuid(operation_id, "operation_id")
         self.__fence_scope_id = _scope(fence_scope_id)
+        self.__fencing_authority_id = _identifier(
+            fencing_authority_id, "fencing_authority_id"
+        )
         self.__effect_id = _identifier(effect_id, "effect_id")
         self.__effect_version = _identifier(effect_version, "effect_version")
         self.__bridge = bridge
@@ -197,6 +206,10 @@ class FencedOperationSession:
     @property
     def fence_scope_id(self) -> str:
         return self.__fence_scope_id
+
+    @property
+    def fencing_authority_id(self) -> str:
+        return self.__fencing_authority_id
 
     @property
     def authority_revision(self) -> int:
@@ -236,6 +249,7 @@ class FencedOperationSession:
             or token.authority_revision != self.authority_revision
             or token.effect_id != self.__effect_id
             or token.effect_version != self.__effect_version
+            or token.authority_id != self.__fencing_authority_id
         ):
             raise NARFError("fence: token binding mismatch")
 
@@ -258,11 +272,14 @@ class FencedOperationSession:
 
 
 class FencedOperationGate:
-    """Freeze identity/revision + stable operation + explicit fence-scope binding.
+    """Freeze identity/revision + stable operation + explicit fence requirements.
 
     The operation binding uses evidence version 2. The legacy OperationBoundGate
     accepts only its version-1 binding, so a fenced contract cannot accidentally
     be reopened through that convenience wrapper and lose its fence requirement.
+
+    The trusted fencing-authority identity is frozen before verification. It is
+    not selected after PASS by the effect executor.
     """
 
     def __init__(self, receipt_store: ReceiptStore, authority_probe):
@@ -277,6 +294,7 @@ class FencedOperationGate:
         *,
         operation_id: str,
         fence_scope_id: str,
+        fencing_authority_id: str,
         task_id: str,
         requirements,
         effect_id: str,
@@ -286,6 +304,9 @@ class FencedOperationGate:
     ) -> str:
         operation_id = _canonical_uuid(operation_id, "operation_id")
         fence_scope_id = _scope(fence_scope_id)
+        fencing_authority_id = _identifier(
+            fencing_authority_id, "fencing_authority_id"
+        )
         effect_id = _identifier(effect_id, "effect_id")
         effect_version = _identifier(effect_version, "effect_version")
 
@@ -309,6 +330,7 @@ class FencedOperationGate:
                 "operation_id": operation_id,
                 "effect_mode": "fenced",
                 "fence_scope_id": fence_scope_id,
+                "fencing_authority_id": fencing_authority_id,
                 "effect_id": effect_id,
                 "effect_version": effect_version,
             }
@@ -328,6 +350,7 @@ class FencedOperationGate:
             "operation_id",
             "effect_mode",
             "fence_scope_id",
+            "fencing_authority_id",
             "effect_id",
             "effect_version",
         }
@@ -344,6 +367,7 @@ class FencedOperationGate:
             raise NARFError("fence: authenticated operation binding required")
         _canonical_uuid(binding.get("operation_id"), "operation_id")
         _scope(binding.get("fence_scope_id"))
+        _identifier(binding.get("fencing_authority_id"), "fencing_authority_id")
         _identifier(binding.get("effect_id"), "effect_id")
         _identifier(binding.get("effect_version"), "effect_version")
         return binding
@@ -387,6 +411,7 @@ class FencedOperationGate:
             self.__store,
             operation_id=binding["operation_id"],
             fence_scope_id=binding["fence_scope_id"],
+            fencing_authority_id=binding["fencing_authority_id"],
             effect_id=binding["effect_id"],
             effect_version=binding["effect_version"],
             bridge=bridge,
@@ -419,6 +444,18 @@ class FencedOperationEffectExecutor:
             raise NARFError("fence: FencedOperationSession required")
 
         try:
+            configured_authority_id = _identifier(
+                self.fencing_authority.authority_id,
+                "fence_authority_id",
+            )
+        except Exception as error:
+            if isinstance(error, NARFError):
+                raise
+            raise NARFError("fence: authority identity unavailable") from error
+        if configured_authority_id != session.fencing_authority_id:
+            raise NARFError("fence: authority binding mismatch")
+
+        try:
             decision = session.finalize()
         except Exception as error:
             if isinstance(error, NARFError):
@@ -432,10 +469,6 @@ class FencedOperationEffectExecutor:
         self.operation_authority.reserve(session.operation_id)
 
         try:
-            authority_id = _identifier(
-                self.fencing_authority.authority_id,
-                "fence_authority_id",
-            )
             token = self.fencing_authority.acquire(
                 fence_scope_id=session.fence_scope_id,
                 operation_id=session.operation_id,
@@ -443,13 +476,20 @@ class FencedOperationEffectExecutor:
                 effect_id=session.effect_id,
                 effect_version=session.effect_version,
             )
+            current_authority_id = _identifier(
+                self.fencing_authority.authority_id,
+                "fence_authority_id",
+            )
         except Exception as error:
             if isinstance(error, NARFError):
                 raise
             raise NARFError("fence: authority unavailable") from error
 
         token = _validate_token(token)
-        if token.authority_id != authority_id:
+        if (
+            current_authority_id != configured_authority_id
+            or token.authority_id != configured_authority_id
+        ):
             raise NARFError("fence: authority binding mismatch")
         if (
             token.fence_scope_id != session.fence_scope_id
