@@ -6,6 +6,7 @@ import multiprocessing
 import os
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import socketserver
 import tempfile
 import threading
 import time
@@ -65,6 +66,28 @@ class _DripHandler(BaseHTTPRequestHandler):
         return
 
 
+class _DripHeaderHandler(socketserver.BaseRequestHandler):
+    def handle(self):
+        request = bytearray()
+        self.request.settimeout(2.0)
+        while b"\r\n\r\n" not in request and len(request) <= 65536:
+            try:
+                chunk = self.request.recv(4096)
+            except TimeoutError:
+                return
+            if not chunk:
+                return
+            request.extend(chunk)
+
+        response_headers = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
+        for byte in response_headers:
+            try:
+                self.request.sendall(bytes([byte]))
+            except (BrokenPipeError, ConnectionResetError):
+                break
+            time.sleep(0.10)
+
+
 class RedTeamRegressionTests(unittest.TestCase):
     @unittest.skipUnless(hasattr(os, "mkfifo") and hasattr(os, "O_NONBLOCK"), "POSIX FIFO required")
     def test_fifo_candidate_rejected_without_blocking_host(self):
@@ -108,6 +131,30 @@ class RedTeamRegressionTests(unittest.TestCase):
             authority.reserve(str(uuid4()))
         elapsed = time.monotonic() - started
         self.assertLess(elapsed, 2.0, f"witness deadline exceeded wall-clock bound: {elapsed:.3f}s")
+
+    def test_signed_witness_timeout_is_wall_clock_bounded_for_drip_headers(self):
+        class Server(socketserver.ThreadingTCPServer):
+            allow_reuse_address = True
+            daemon_threads = True
+
+        server = Server(("127.0.0.1", 0), _DripHeaderHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+
+        public_key = base64.b64encode(b"\x00" * 32).decode("ascii")
+        authority = SignedWitnessAuthority(
+            f"http://127.0.0.1:{server.server_address[1]}",
+            public_key,
+            timeout_seconds=1,
+            allow_insecure_http=True,
+        )
+        started = time.monotonic()
+        with self.assertRaisesRegex(NARFError, "signed witness unavailable"):
+            authority.reserve(str(uuid4()))
+        elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 2.0, f"witness header deadline exceeded: {elapsed:.3f}s")
 
     def test_rollback_executor_rejects_caller_contract_id_not_bound_to_session(self):
         with tempfile.TemporaryDirectory(prefix="narf-redteam-contract-") as name:

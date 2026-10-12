@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import http.client
+import io
 import json
 import re
 import secrets
 import time
-import urllib.error
-import urllib.request
 from urllib.parse import urlsplit
 
 from .gate import NARFError
@@ -80,15 +80,46 @@ def _remaining_seconds(deadline: float) -> float:
     return remaining
 
 
-def _set_stream_timeout(stream, timeout_seconds: float) -> None:
-    """Tighten urllib's underlying socket timeout when the socket is exposed."""
-    fp = getattr(stream, "fp", None)
-    raw = getattr(fp, "raw", None)
-    sock = getattr(raw, "_sock", None)
-    if sock is None:
-        sock = getattr(fp, "_sock", None)
-    if sock is not None:
-        sock.settimeout(timeout_seconds)
+class _DeadlineRawReader(io.RawIOBase):
+    """Raw socket reader that reapplies an absolute deadline before every recv."""
+
+    def __init__(self, sock, deadline: float):
+        super().__init__()
+        self._sock = sock
+        self._deadline = deadline
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer) -> int:
+        self._sock.settimeout(_remaining_seconds(self._deadline))
+        try:
+            return self._sock.recv_into(buffer)
+        except TimeoutError:
+            raise TimeoutError("signed witness deadline exceeded") from None
+
+    def close(self) -> None:
+        if not self.closed:
+            try:
+                self._sock.close()
+            finally:
+                super().close()
+
+
+class _DeadlineSocket:
+    """Socket facade whose HTTP read file enforces one monotonic deadline."""
+
+    def __init__(self, sock, deadline: float):
+        self._sock = sock
+        self._deadline = deadline
+
+    def makefile(self, mode="r", buffering=None, *args, **kwargs):
+        if mode != "rb":
+            raise ValueError("signed witness socket only supports binary reads")
+        return io.BufferedReader(_DeadlineRawReader(self._sock, self._deadline))
+
+    def __getattr__(self, name):
+        return getattr(self._sock, name)
 
 
 def _read_with_deadline(stream, deadline: float) -> bytes:
@@ -97,8 +128,7 @@ def _read_with_deadline(stream, deadline: float) -> bytes:
     if not callable(read_once):
         read_once = stream.read
     while len(data) <= _MAX_RESPONSE_BYTES:
-        remaining = _remaining_seconds(deadline)
-        _set_stream_timeout(stream, remaining)
+        _remaining_seconds(deadline)
         size = min(_READ_CHUNK_BYTES, _MAX_RESPONSE_BYTES + 1 - len(data))
         chunk = read_once(size)
         if not chunk:
@@ -167,29 +197,44 @@ class SignedWitnessAuthority(ConsumptionAuthority):
             "token": token,
             "nonce": nonce,
         }
-        request = urllib.request.Request(
-            f"{self.base_url}/{operation}",
-            data=_canonical_bytes(request_payload),
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
-            method="POST",
+        request_body = _canonical_bytes(request_payload)
+        parsed = urlsplit(self.base_url)
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        path_prefix = parsed.path.rstrip("/")
+        request_target = f"{path_prefix}/{operation}" if path_prefix else f"/{operation}"
+        connection_class = (
+            http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
         )
         deadline = time.monotonic() + self.timeout_seconds
+        connection = connection_class(
+            parsed.hostname,
+            port,
+            timeout=_remaining_seconds(deadline),
+        )
+        response = None
         try:
-            try:
-                response = urllib.request.urlopen(request, timeout=_remaining_seconds(deadline))
-                try:
-                    status = response.status
-                    raw = _read_with_deadline(response, deadline)
-                finally:
-                    response.close()
-            except urllib.error.HTTPError as error:
-                try:
-                    status = error.code
-                    raw = _read_with_deadline(error, deadline)
-                finally:
-                    error.close()
+            connection.connect()
+            if connection.sock is None:
+                raise OSError("signed witness connection unavailable")
+            connection.sock.settimeout(_remaining_seconds(deadline))
+            connection.request(
+                "POST",
+                request_target,
+                body=request_body,
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+            )
+            if connection.sock is None:
+                raise OSError("signed witness connection unavailable")
+            connection.sock = _DeadlineSocket(connection.sock, deadline)
+            response = connection.getresponse()
+            status = response.status
+            raw = _read_with_deadline(response, deadline)
         except Exception:
             raise NARFError("effect: signed witness unavailable") from None
+        finally:
+            if response is not None:
+                response.close()
+            connection.close()
 
         if len(raw) > _MAX_RESPONSE_BYTES:
             raise NARFError("effect: signed witness response too large")
