@@ -1,0 +1,89 @@
+name: Publish v1.60 RC2
+
+on:
+  workflow_run:
+    workflows: ["NARF reference checks"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish or verify immutable v1.60 RC2
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERIFIED_MAIN_SHA: ${{ github.event.workflow_run.head_sha }}
+      RELEASE_TAG: v1.60-rc2
+    steps:
+      - name: Checkout exact verified main revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.VERIFIED_MAIN_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify workflow source binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$VERIFIED_MAIN_SHA"
+          test -f RELEASE-v1.60-rc2.md
+
+      - name: Publish once or verify pinned immutable RC2 release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if existing_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha' 2>/dev/null)"; then
+            pinned_aggregate="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${existing_sha}/check-runs" --paginate --jq '.check_runs[] | select(.name == "Reference tests (no skips)") | .conclusion' | tail -n 1)"
+            if [ "$pinned_aggregate" != "success" ]; then
+              echo "Existing ${RELEASE_TAG} source ${existing_sha} does not have a successful Reference tests (no skips) gate." >&2
+              exit 1
+            fi
+
+            immutable="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.immutable')"
+            prerelease="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.prerelease')"
+            test "$immutable" = "true"
+            test "$prerelease" = "true"
+            echo "${RELEASE_TAG} remains immutable and pinned to ${existing_sha}; current verified main is ${VERIFIED_MAIN_SHA}."
+            exit 0
+          fi
+
+          current_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [ "$current_main" != "$VERIFIED_MAIN_SHA" ]; then
+            echo "main moved from verified SHA ${VERIFIED_MAIN_SHA} to ${current_main}; refusing first RC2 publication." >&2
+            exit 1
+          fi
+
+          aggregate="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${VERIFIED_MAIN_SHA}/check-runs" --paginate --jq '.check_runs[] | select(.name == "Reference tests (no skips)") | .conclusion' | tail -n 1)"
+          if [ "$aggregate" != "success" ]; then
+            echo "Reference tests (no skips) is not success on ${VERIFIED_MAIN_SHA}; refusing RC2 publication." >&2
+            exit 1
+          fi
+
+          immutable_releases="$(gh api -H 'X-GitHub-Api-Version: 2026-03-10' "repos/${GITHUB_REPOSITORY}/immutable-releases" --jq '.enabled')"
+          if [ "$immutable_releases" != "true" ]; then
+            echo "Repository immutable releases are not enabled; refusing RC2 publication." >&2
+            exit 1
+          fi
+
+          gh release create "$RELEASE_TAG" \
+            --target "$VERIFIED_MAIN_SHA" \
+            --title "$RELEASE_TAG" \
+            --prerelease \
+            --notes-file RELEASE-v1.60-rc2.md
+
+          created_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha')"
+          immutable="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.immutable')"
+          prerelease="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.prerelease')"
+
+          test "$created_sha" = "$VERIFIED_MAIN_SHA"
+          test "$immutable" = "true"
+          test "$prerelease" = "true"
