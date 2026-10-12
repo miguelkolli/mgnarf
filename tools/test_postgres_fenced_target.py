@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from copy import deepcopy
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import sys
@@ -45,11 +44,6 @@ def psycopg_module():
     return psycopg
 
 
-def advisory_key(scope: str) -> int:
-    raw = hashlib.sha256(scope.encode("utf-8")).digest()[:8]
-    return int.from_bytes(raw, "big", signed=True)
-
-
 def dump(path: Path, value) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
 
@@ -69,6 +63,53 @@ def admin_exec(admin_dsn: str, sql: str, params=()):
             if cursor.description:
                 return cursor.fetchall()
     return None
+
+
+def configure_database_boundary(admin_dsn: str) -> None:
+    """Install DB-owned fencing functions and reduce runtime roles to least privilege."""
+    sql_path = ROOT / "sql" / "postgres_fencing_v1.sql"
+    text = sql_path.read_text()
+    psycopg = psycopg_module()
+    with psycopg.connect(admin_dsn, autocommit=True) as connection:
+        with connection.cursor() as cursor:
+            for block in text.split("-- NARF_STATEMENT"):
+                statement = block.strip()
+                if not statement or ("CREATE " not in statement and "REVOKE " not in statement):
+                    continue
+                cursor.execute(statement)
+
+            roles = "narf_fence_issuer, narf_fence_target, narf_fence_control"
+            cursor.execute(
+                f"REVOKE ALL ON TABLE public.narf_fence_scopes, public.narf_fence_issuance, "
+                f"public.narf_fenced_effects FROM {roles}"
+            )
+            cursor.execute(
+                "REVOKE ALL ON TABLE public.narf_consumption_ledger "
+                "FROM narf_fence_target, narf_fence_control"
+            )
+            cursor.execute(
+                "REVOKE ALL ON FUNCTION public.narf_current_fence_revision(text), "
+                "public.narf_acquire_fence(text, uuid, bigint, text, text, text), "
+                "public.narf_advance_fence_revision(text, bigint, bigint), "
+                "public.narf_commit_fenced_effect(text, uuid, bigint, bigint, text, text, text, text) "
+                f"FROM {roles}"
+            )
+            cursor.execute(f"GRANT USAGE ON SCHEMA public TO {roles}")
+            cursor.execute(
+                "GRANT SELECT, INSERT ON public.narf_consumption_ledger TO narf_fence_issuer"
+            )
+            cursor.execute(
+                "GRANT EXECUTE ON FUNCTION public.narf_acquire_fence(text, uuid, bigint, text, text, text) "
+                "TO narf_fence_issuer"
+            )
+            cursor.execute(
+                "GRANT EXECUTE ON FUNCTION public.narf_current_fence_revision(text), "
+                "public.narf_advance_fence_revision(text, bigint, bigint) TO narf_fence_control"
+            )
+            cursor.execute(
+                "GRANT EXECUTE ON FUNCTION public.narf_commit_fenced_effect(text, uuid, bigint, bigint, text, text, text, text) "
+                "TO narf_fence_target"
+            )
 
 
 def reset(admin_dsn: str) -> None:
@@ -105,56 +146,87 @@ def blocked_sql(dsn: str, sql: str) -> dict:
         return {"blocked": True, "error_type": type(error).__name__}
 
 
+def function_privilege(admin_dsn: str, role: str, signature: str) -> bool:
+    rows = admin_exec(
+        admin_dsn,
+        "SELECT has_function_privilege(%s, %s, 'EXECUTE')",
+        (role, signature),
+    )
+    return bool(rows[0][0])
+
+
 def prove_split_role_boundary(issuer_dsn: str, target_dsn: str, control_dsn: str, admin_dsn: str) -> dict:
-    cases = [
+    direct_cases = [
         (
             "target-cannot-update-authority-revision",
             target_dsn,
             "UPDATE narf_fence_scopes SET authority_revision = authority_revision + 1 WHERE scope_id = 'deployment:production-a'",
         ),
         (
-            "target-cannot-update-fence-sequence",
+            "target-cannot-insert-effect-directly",
             target_dsn,
-            "UPDATE narf_fence_scopes SET fence_sequence = fence_sequence + 1 WHERE scope_id = 'deployment:production-a'",
+            "INSERT INTO narf_fenced_effects(operation_id,scope_id,fence_sequence,authority_revision,effect_id,effect_version,payload) VALUES ('00000000-0000-0000-0000-000000000097','deployment:production-a',1,11,'deploy','1','forged')",
         ),
         (
-            "issuer-cannot-update-authority-revision",
+            "issuer-cannot-update-fence-sequence-directly",
             issuer_dsn,
-            "UPDATE narf_fence_scopes SET authority_revision = authority_revision + 1 WHERE scope_id = 'deployment:production-a'",
-        ),
-        (
-            "control-cannot-update-fence-sequence",
-            control_dsn,
             "UPDATE narf_fence_scopes SET fence_sequence = fence_sequence + 1 WHERE scope_id = 'deployment:production-a'",
         ),
         (
-            "target-cannot-insert-issuance",
-            target_dsn,
+            "issuer-cannot-insert-issuance-directly",
+            issuer_dsn,
             "INSERT INTO narf_fence_issuance(scope_id,fence_sequence,operation_id,authority_revision,effect_id,effect_version,authority_id) VALUES ('deployment:production-a',99,'00000000-0000-0000-0000-000000000099',11,'deploy','1','forged')",
         ),
         (
-            "control-cannot-insert-effect",
+            "control-cannot-update-authority-revision-directly",
+            control_dsn,
+            "UPDATE narf_fence_scopes SET authority_revision = authority_revision + 1 WHERE scope_id = 'deployment:production-a'",
+        ),
+        (
+            "control-cannot-insert-effect-directly",
             control_dsn,
             "INSERT INTO narf_fenced_effects(operation_id,scope_id,fence_sequence,authority_revision,effect_id,effect_version,payload) VALUES ('00000000-0000-0000-0000-000000000098','deployment:production-a',1,11,'deploy','1','forged')",
         ),
     ]
-    results = []
-    for name, dsn, sql in cases:
+    direct_results = []
+    for name, dsn, sql in direct_cases:
         row = blocked_sql(dsn, sql)
-        results.append({"case": name, **row})
+        direct_results.append({"case": name, **row})
+
+    functions = {
+        "current": "public.narf_current_fence_revision(text)",
+        "acquire": "public.narf_acquire_fence(text,uuid,bigint,text,text,text)",
+        "advance": "public.narf_advance_fence_revision(text,bigint,bigint)",
+        "commit": "public.narf_commit_fenced_effect(text,uuid,bigint,bigint,text,text,text,text)",
+    }
+    expected = {
+        "narf_fence_issuer": {"current": False, "acquire": True, "advance": False, "commit": False},
+        "narf_fence_control": {"current": True, "acquire": False, "advance": True, "commit": False},
+        "narf_fence_target": {"current": False, "acquire": False, "advance": False, "commit": True},
+    }
+    observed = {
+        role: {
+            name: function_privilege(admin_dsn, role, signature)
+            for name, signature in functions.items()
+        }
+        for role in expected
+    }
 
     state = scope_state(admin_dsn)
     issuance_rows = scalar(admin_dsn, "SELECT count(*) FROM narf_fence_issuance")
     effect_rows = scalar(admin_dsn, "SELECT count(*) FROM narf_fenced_effects")
     passed = (
-        all(row["blocked"] for row in results)
+        all(row["blocked"] for row in direct_results)
+        and observed == expected
         and state == {"authority_revision": 11, "fence_sequence": 0}
         and issuance_rows == 0
         and effect_rows == 0
     )
     return {
         "result": "PASS" if passed else "FAIL",
-        "cases": results,
+        "direct_dml": direct_results,
+        "function_execute_expected": expected,
+        "function_execute_observed": observed,
         "scope_after_attempts": state,
         "issuance_rows": issuance_rows,
         "effect_rows": effect_rows,
@@ -337,12 +409,22 @@ def run_newer_fence_supersedes(output, api, issuer_dsn, target_dsn, admin_dsn):
 
 
 def hold_transition(control_dsn: str):
+    """Open a control-plane transaction that has advanced revision but not committed."""
     psycopg = psycopg_module()
     connection = psycopg.connect(control_dsn)
     cursor = connection.cursor()
-    cursor.execute("SELECT pg_advisory_xact_lock(%s)", (advisory_key(SCOPE),))
-    cursor.execute("SELECT authority_revision FROM narf_fence_scopes WHERE scope_id = %s FOR UPDATE", (SCOPE,))
-    cursor.execute("UPDATE narf_fence_scopes SET authority_revision = 12 WHERE scope_id = %s", (SCOPE,))
+    cursor.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+        (SCOPE,),
+    )
+    cursor.execute(
+        "SELECT public.narf_advance_fence_revision(%s, %s, %s)",
+        (SCOPE, 11, 12),
+    )
+    row = cursor.fetchone()
+    if row is None or int(row[0]) != 12:
+        connection.close()
+        raise RuntimeError("control transition fixture failed")
     return connection
 
 
@@ -441,6 +523,7 @@ def main():
         parser.error("--output must be absolute and outside repository")
     args.output.mkdir(parents=True, exist_ok=False, mode=0o700)
 
+    configure_database_boundary(args.admin_dsn)
     api = load_api()
     rows = [
         run_current_fence(args.output, api, args.issuer_dsn, args.target_dsn, args.control_dsn, args.admin_dsn),
@@ -460,7 +543,7 @@ def main():
         "planned_cases": 6,
         "counts": counts,
         "cases": rows,
-        "claim": "For this measured PostgreSQL advisory-lock transaction model, authority transitions and fence ordering are enforced at target commit; split-role privilege boundaries were actively probed; privileged rollback remains outside the measured guarantee.",
+        "claim": "For this measured PostgreSQL function-enforced transaction model, authority transitions and fence ordering are enforced at target commit; runtime roles were actively probed for direct-DML/function privilege bypass; privileged owner/admin rollback remains outside the measured guarantee.",
     }
     dump(args.output / "summary.json", summary)
     print(json.dumps(summary, indent=2, sort_keys=True))
