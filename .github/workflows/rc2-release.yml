@@ -1,4 +1,4 @@
-name: Publish v1.60 RC2
+name: Prepare or verify v1.60 RC2
 
 on:
   workflow_run:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    name: Publish or verify immutable v1.60 RC2
+    name: Prepare draft or verify immutable v1.60 RC2
     if: >-
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.event == 'push' &&
@@ -36,15 +36,17 @@ jobs:
           test "$(git rev-parse HEAD)" = "$VERIFIED_MAIN_SHA"
           test -f RELEASE-v1.60-rc2.md
 
-      - name: Publish once or verify pinned immutable RC2 release
+      - name: Prepare draft or verify published immutable RC2
         shell: bash
         run: |
           set -euo pipefail
 
+          # Once RC2 is published, never follow moving main. Verify the historical
+          # release is still pinned, immutable, prerelease, and backed by a green gate.
           if existing_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha' 2>/dev/null)"; then
             pinned_aggregate="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${existing_sha}/check-runs" --paginate --jq '.check_runs[] | select(.name == "Reference tests (no skips)") | .conclusion' | tail -n 1)"
             if [ "$pinned_aggregate" != "success" ]; then
-              echo "Existing ${RELEASE_TAG} source ${existing_sha} does not have a successful Reference tests (no skips) gate." >&2
+              echo "Existing ${RELEASE_TAG} source ${existing_sha} lacks a successful Reference tests (no skips) gate." >&2
               exit 1
             fi
 
@@ -56,34 +58,41 @@ jobs:
             exit 0
           fi
 
+          # Before first publication, bind the draft to the exact currently verified main.
           current_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
           if [ "$current_main" != "$VERIFIED_MAIN_SHA" ]; then
-            echo "main moved from verified SHA ${VERIFIED_MAIN_SHA} to ${current_main}; refusing first RC2 publication." >&2
+            echo "main moved from verified SHA ${VERIFIED_MAIN_SHA} to ${current_main}; refusing RC2 draft preparation." >&2
             exit 1
           fi
 
           aggregate="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${VERIFIED_MAIN_SHA}/check-runs" --paginate --jq '.check_runs[] | select(.name == "Reference tests (no skips)") | .conclusion' | tail -n 1)"
           if [ "$aggregate" != "success" ]; then
-            echo "Reference tests (no skips) is not success on ${VERIFIED_MAIN_SHA}; refusing RC2 publication." >&2
+            echo "Reference tests (no skips) is not success on ${VERIFIED_MAIN_SHA}; refusing RC2 draft preparation." >&2
             exit 1
           fi
 
-          immutable_releases="$(gh api -H 'X-GitHub-Api-Version: 2026-03-10' "repos/${GITHUB_REPOSITORY}/immutable-releases" --jq '.enabled')"
-          if [ "$immutable_releases" != "true" ]; then
-            echo "Repository immutable releases are not enabled; refusing RC2 publication." >&2
+          draft_id="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\" and .draft == true) | .id" | head -n 1)"
+
+          if [ -z "$draft_id" ]; then
+            gh release create "$RELEASE_TAG" \
+              --target "$VERIFIED_MAIN_SHA" \
+              --title "$RELEASE_TAG" \
+              --prerelease \
+              --draft \
+              --notes-file RELEASE-v1.60-rc2.md
+            draft_id="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\" and .draft == true) | .id" | head -n 1)"
+          fi
+
+          test -n "$draft_id"
+          draft="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${draft_id}")"
+          test "$(printf '%s' "$draft" | jq -r '.draft')" = "true"
+          test "$(printf '%s' "$draft" | jq -r '.prerelease')" = "true"
+          test "$(printf '%s' "$draft" | jq -r '.target_commitish')" = "$VERIFIED_MAIN_SHA"
+
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Draft preparation unexpectedly created ${RELEASE_TAG}; refusing acceptance." >&2
             exit 1
           fi
 
-          gh release create "$RELEASE_TAG" \
-            --target "$VERIFIED_MAIN_SHA" \
-            --title "$RELEASE_TAG" \
-            --prerelease \
-            --notes-file RELEASE-v1.60-rc2.md
-
-          created_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha')"
-          immutable="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.immutable')"
-          prerelease="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.prerelease')"
-
-          test "$created_sha" = "$VERIFIED_MAIN_SHA"
-          test "$immutable" = "true"
-          test "$prerelease" = "true"
+          echo "RC2 draft is pinned to ${VERIFIED_MAIN_SHA}; no RC2 tag exists."
+          echo "ADMIN GATE: confirm Settings > General > Releases > Enable release immutability, then publish this exact draft."

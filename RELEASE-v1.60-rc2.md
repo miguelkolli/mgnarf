@@ -25,17 +25,20 @@ The follow-up re-audited the reported code paths against the immutable RC1 sourc
 
 ## RC2 acceptance gate
 
-Before `v1.60-rc2` is created:
+Before `v1.60-rc2` is published:
 
 - the release-preparation change must be merged to `main`;
 - the exact merged `main` SHA must complete the repository's required reference workflows;
 - `Reference tests (no skips)` must be `success` on that exact SHA;
-- repository immutable releases must be enabled;
-- the publication workflow must confirm that `main` still resolves to the same verified SHA immediately before first publication;
-- the created tag must resolve to the same verified SHA;
+- an RC2 draft must be bound to that exact verified SHA while no `v1.60-rc2` tag exists;
+- repository release immutability must be confirmed enabled by a repository administrator before the first publication;
+- that exact draft must then be published without changing its target;
+- the created tag must resolve to the draft's exact verified SHA;
 - the resulting GitHub release must report `immutable=true` and `prerelease=true`.
 
-RC2 must not be published from a PR merge-ref, candidate branch SHA, historical green run or manually retargeted tag.
+GitHub's immutable-release settings endpoint requires repository Administration read permission. The standard Actions `GITHUB_TOKEN` used by this repository does not have that permission, so the automated path deliberately stops at a draft instead of weakening the gate or creating a release first and checking immutability afterward. First publication therefore has one explicit admin/UI gate: confirm **Settings > General > Releases > Enable release immutability**, then publish the exact prepared draft. After publication, automation can verify the public release's immutable flag, tag binding and source gate without needing repository-admin permission.
+
+RC2 must not be published from a PR merge-ref, candidate branch SHA, historical green run, manually retargeted tag, or a draft whose target differs from the verified candidate SHA.
 
 ## Known boundaries retained in RC2
 
