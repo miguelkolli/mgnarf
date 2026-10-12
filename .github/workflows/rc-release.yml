@@ -48,16 +48,6 @@ jobs:
             exit 1
           fi
 
-      - name: Require immutable releases
-        shell: bash
-        run: |
-          set -euo pipefail
-          enabled="$(gh api -H 'X-GitHub-Api-Version: 2026-03-10' "repos/${GITHUB_REPOSITORY}/immutable-releases" --jq '.enabled')"
-          if [ "$enabled" != "true" ]; then
-            echo "GitHub immutable releases are not enabled; refusing RC1 publication." >&2
-            exit 1
-          fi
-
       - name: Create once or verify immutable RC1 release
         shell: bash
         run: |
@@ -85,5 +75,8 @@ jobs:
 
           created_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha')"
           immutable="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.immutable')"
+          prerelease="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.prerelease')"
+
           test "$created_sha" = "$VERIFIED_MAIN_SHA"
           test "$immutable" = "true"
+          test "$prerelease" = "true"
