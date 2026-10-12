@@ -1,0 +1,159 @@
+name: NARF PostgreSQL fenced target
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: narf-postgres-fenced-target-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-fenced-target:
+    name: PostgreSQL commit-time fencing (5 protected + 1 limitation)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      CI_EVIDENCE: /tmp/narf-postgres-fenced-target-evidence
+      NARF_PG_ADMIN_DSN: postgresql://narf_admin:narf-admin-ci@127.0.0.1:5432/narf
+      NARF_PG_ISSUER_DSN: postgresql://narf_fence_issuer:issuer-ci@127.0.0.1:5432/narf
+      NARF_PG_TARGET_DSN: postgresql://narf_fence_target:target-ci@127.0.0.1:5432/narf
+      NARF_PG_CONTROL_DSN: postgresql://narf_fence_control:control-ci@127.0.0.1:5432/narf
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_USER: narf_admin
+          POSTGRES_PASSWORD: narf-admin-ci
+          POSTGRES_DB: narf
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U narf_admin -d narf"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install PostgreSQL client driver
+        run: python3 -m pip install --disable-pip-version-check --no-input "psycopg[binary]>=3.2,<4"
+      - name: Bootstrap split-role fenced target
+        shell: bash
+        run: |
+          mkdir -p "$CI_EVIDENCE"
+          git rev-parse HEAD > "$CI_EVIDENCE/commit.txt"
+          python3 --version > "$CI_EVIDENCE/python.txt"
+          uname -a > "$CI_EVIDENCE/kernel.txt"
+          python3 - <<'PY'
+          import json, os, psycopg
+          from pathlib import Path
+          evidence = Path(os.environ["CI_EVIDENCE"])
+          with psycopg.connect(os.environ["NARF_PG_ADMIN_DSN"], autocommit=True) as connection:
+              with connection.cursor() as cursor:
+                  cursor.execute("CREATE ROLE narf_fence_issuer LOGIN PASSWORD 'issuer-ci'")
+                  cursor.execute("CREATE ROLE narf_fence_target LOGIN PASSWORD 'target-ci'")
+                  cursor.execute("CREATE ROLE narf_fence_control LOGIN PASSWORD 'control-ci'")
+                  cursor.execute("""
+                      CREATE TABLE narf_consumption_ledger (
+                          token uuid PRIMARY KEY,
+                          authority_version text NOT NULL,
+                          consumed_at timestamptz NOT NULL DEFAULT clock_timestamp()
+                      )
+                  """)
+                  cursor.execute("""
+                      CREATE TABLE narf_fence_scopes (
+                          scope_id text PRIMARY KEY,
+                          authority_revision bigint NOT NULL CHECK (authority_revision >= 0),
+                          fence_sequence bigint NOT NULL CHECK (fence_sequence >= 0)
+                      )
+                  """)
+                  cursor.execute("""
+                      CREATE TABLE narf_fence_issuance (
+                          scope_id text NOT NULL REFERENCES narf_fence_scopes(scope_id),
+                          fence_sequence bigint NOT NULL CHECK (fence_sequence > 0),
+                          operation_id uuid NOT NULL UNIQUE,
+                          authority_revision bigint NOT NULL CHECK (authority_revision >= 0),
+                          effect_id text NOT NULL,
+                          effect_version text NOT NULL,
+                          authority_id text NOT NULL,
+                          issued_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+                          PRIMARY KEY (scope_id, fence_sequence)
+                      )
+                  """)
+                  cursor.execute("""
+                      CREATE TABLE narf_fenced_effects (
+                          operation_id uuid PRIMARY KEY,
+                          scope_id text NOT NULL,
+                          fence_sequence bigint NOT NULL,
+                          authority_revision bigint NOT NULL,
+                          effect_id text NOT NULL,
+                          effect_version text NOT NULL,
+                          payload text NOT NULL,
+                          committed_at timestamptz NOT NULL DEFAULT clock_timestamp()
+                      )
+                  """)
+                  cursor.execute("INSERT INTO narf_fence_scopes VALUES ('deployment:production-a', 11, 0)")
+                  for table in ('narf_consumption_ledger','narf_fence_scopes','narf_fence_issuance','narf_fenced_effects'):
+                      cursor.execute(f"REVOKE ALL ON {table} FROM PUBLIC")
+                  cursor.execute("GRANT SELECT, INSERT ON narf_consumption_ledger TO narf_fence_issuer")
+                  cursor.execute("GRANT SELECT ON narf_fence_scopes TO narf_fence_issuer")
+                  cursor.execute("GRANT UPDATE (fence_sequence) ON narf_fence_scopes TO narf_fence_issuer")
+                  cursor.execute("GRANT SELECT, INSERT ON narf_fence_issuance TO narf_fence_issuer")
+                  cursor.execute("GRANT SELECT ON narf_fence_scopes, narf_fence_issuance TO narf_fence_target")
+                  cursor.execute("GRANT SELECT, INSERT ON narf_fenced_effects TO narf_fence_target")
+                  cursor.execute("GRANT SELECT ON narf_fence_scopes TO narf_fence_control")
+                  cursor.execute("GRANT UPDATE (authority_revision) ON narf_fence_scopes TO narf_fence_control")
+                  cursor.execute("SELECT current_setting('server_version')")
+                  version = cursor.fetchone()[0]
+          evidence.joinpath("postgres.json").write_text(json.dumps({
+              "server_version": version,
+              "psycopg_version": psycopg.__version__,
+              "issuer": ["consumption SELECT/INSERT", "scope SELECT", "scope UPDATE(fence_sequence)", "issuance SELECT/INSERT"],
+              "target": ["scope SELECT", "issuance SELECT", "effect SELECT/INSERT"],
+              "control": ["scope SELECT", "scope UPDATE(authority_revision)"],
+              "shared_admin_role": False,
+          }, indent=2) + "\n")
+          PY
+      - name: Run fenced commit boundary fixture
+        shell: bash
+        run: |
+          python3 tools/test_postgres_fenced_target.py \
+            --output "$CI_EVIDENCE/results" \
+            --issuer-dsn "$NARF_PG_ISSUER_DSN" \
+            --target-dsn "$NARF_PG_TARGET_DSN" \
+            --control-dsn "$NARF_PG_CONTROL_DSN" \
+            --admin-dsn "$NARF_PG_ADMIN_DSN" \
+            2>&1 | tee "$CI_EVIDENCE/harness.log"
+      - name: Require exact fenced boundary
+        run: |
+          python3 - "$CI_EVIDENCE/results/summary.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          summary = json.loads(Path(sys.argv[1]).read_text())
+          assert summary["result"] == "BOUNDARY_CONFIRMED", summary
+          assert summary["planned_cases"] == 6, summary
+          assert summary["counts"] == {
+              "PASS": 5,
+              "LIMITATION_CONFIRMED": 1,
+              "FAIL": 0,
+          }, summary
+          print(json.dumps(summary, indent=2))
+          PY
+          test -z "$(git status --porcelain)"
+      - name: Preserve fenced target evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: narf-postgres-fenced-target-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.CI_EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 30
