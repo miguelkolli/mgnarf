@@ -25,6 +25,10 @@ NARF is a standalone fail-closed acceptance gate for AI-assisted and automated w
 
 It has no required parent framework, private repository, workspace variable, external governance runtime or project harness. The core reference gate uses the Python standard library. Optional authority adapters add dependencies only for their own measured boundary.
 
+## Repository map
+
+New to the repository or looking for a specific document? Start with **[INDEX.md](INDEX.md)** — the repo-wide map for integration, specification, security evidence, releases, source, tests, tools and workflows.
+
 ## Where does MGnarf go?
 
 Put MGnarf **between verified work and the real effect** — as close as practical to the deploy, database write, email/API mutation, file publication, or device command that changes the outside world.
@@ -114,6 +118,7 @@ These are measured reference boundaries, not an independent security certificati
 
 ## Repository
 
+- [INDEX.md](INDEX.md) — repo-wide navigation map: start, integrate, audit, release history, source, tests, tools and workflows.
 - [NARF-SPEC.md](NARF-SPEC.md) — behavioral specification.
 - [INDEPENDENCE.md](INDEPENDENCE.md) — standalone/dependency boundary.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — reference architecture and trust boundary.
