@@ -158,6 +158,15 @@ class NARFGateTests(unittest.TestCase):
         session.inhibit("authority_missing")
         self.assertEqual(session.finalize()["result"], "BLOCKED")
 
+    def test_inhibitor_after_pass_invalidates_effect(self):
+        session = self.fixture.session()
+        self.execute_all(session)
+        self.assertEqual(session.finalize()["result"], "PASS")
+        session.inhibit("human_stop")
+        with self.assertRaisesRegex(NARFError, "invalid or stale"):
+            session.execute_effect()
+        self.assertEqual(self.fixture.effects, [])
+
     def test_revocation_blocks_and_fails_closed_on_probe_error(self):
         self.fixture.revoked = True
         session = self.fixture.session()
@@ -165,8 +174,10 @@ class NARFGateTests(unittest.TestCase):
 
         fixture = Fixture()
         self.addCleanup(fixture.close)
+
         def broken_probe(_contract_id, _candidate):
             raise RuntimeError("probe unavailable")
+
         session = fixture.gate.open_session(
             fixture.contract_id,
             fixture.task,
@@ -175,6 +186,24 @@ class NARFGateTests(unittest.TestCase):
             state_probe=fixture.state_probe,
             revocation_probe=broken_probe,
         )
+        self.assertEqual(session.verdict()["reason"], "REVOKED")
+
+    def test_non_boolean_revocation_probe_fails_closed(self):
+        fixture = Fixture()
+        self.addCleanup(fixture.close)
+
+        def unavailable_probe(_contract_id, _candidate):
+            return None
+
+        session = fixture.gate.open_session(
+            fixture.contract_id,
+            fixture.task,
+            verifier_bindings=fixture.bindings(),
+            effect_binding=fixture.effect(),
+            state_probe=fixture.state_probe,
+            revocation_probe=unavailable_probe,
+        )
+        self.assertEqual(session.verdict()["result"], "BLOCKED")
         self.assertEqual(session.verdict()["reason"], "REVOKED")
 
     def test_tampered_verification_receipt_is_rejected(self):

@@ -55,13 +55,15 @@ A developer or worker result outside the bound verifier route is not NARF eviden
 
 The gate rechecks frozen state before each verifier run and after the verifier returns. Candidate, goalpost, policy, contract, revocation, or state-probe changes must fail closed.
 
+When a revocation probe is configured, only the exact boolean value `False` establishes a clear non-revoked state. `True`, probe exceptions, and non-boolean or otherwise unavailable probe results fail closed as revoked/unavailable authority.
+
 ## 7. Final decision
 
 Finalization writes an authenticated decision receipt bound to the same contract, session, task and frozen state. A PASS decision is valid only while reevaluation still produces PASS.
 
 ## 8. Effect rule
 
-A PASS decision is not permanent permission. Immediately before the gated effect, the host revalidates revocation, frozen state, contract authenticity, and decision freshness.
+A PASS decision is not permanent permission. Immediately before the gated effect, the host revalidates revocation, frozen state, contract authenticity, inhibitor state, and decision freshness.
 
 Core NARF effect consumption is single-use per frozen contract/authorization. The compatibility `RollbackProtectedEffectExecutor` therefore reserves a contract-scoped token.
 
@@ -72,6 +74,8 @@ NARF does not infer business equivalence. If the trusted host assigns a fresh op
 ## 9. Authority and inhibitors
 
 Human or product authority is outside NARF's product-decision role. An integrating host may represent a stop condition as an inhibitor. An inhibitor prevents PASS or effect even when technical verifiers passed.
+
+An inhibitor may therefore be added after a PASS decision has been finalized but before the effect has been consumed. That new inhibitor invalidates the previously valid PASS for effect execution. Once the effect has been consumed, adding an inhibitor cannot retroactively undo it and is rejected by the reference session API.
 
 ## 10. Trust boundary
 

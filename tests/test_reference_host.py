@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from narf import NARFError, Requirement, VerifierBinding, VerifierResult
 from narf.reference_host import TrustedFileHost
@@ -45,6 +46,15 @@ class ReferenceHostIntegrationTests(unittest.TestCase):
         self.assertEqual(target.read_bytes(), b"approved payload")
         with self.assertRaises(NARFError):
             self.host.commit()
+
+    def test_atomic_publish_failure_never_exposes_target(self):
+        self.prepare()
+        self.assertEqual(self.host.verify()["result"], "PASS")
+        with patch("narf.reference_host.os.link", side_effect=OSError("publish fault")):
+            with self.assertRaisesRegex(OSError, "publish fault"):
+                self.host.commit()
+        self.assertFalse(self.host.target.exists())
+        self.assertEqual(list(self.host.effects_dir.glob(".*.tmp")), [])
 
     def test_revocation_after_pass_blocks_file_effect(self):
         self.prepare()

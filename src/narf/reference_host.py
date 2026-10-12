@@ -3,6 +3,7 @@ from __future__ import annotations
 import json, os, threading
 from dataclasses import asdict, replace
 from pathlib import Path
+from uuid import uuid4
 from .gate import EffectBinding, FrozenState, NARFError, NARFGate, ReceiptStore, canonical_json, canonical_json_digest, sha256_bytes
 
 class TrustedFileHost:
@@ -52,20 +53,42 @@ class TrustedFileHost:
         target = self.effects_dir / effect_name
 
         def write_effect():
+            # Build the complete payload under a unique host-owned temporary name.
+            # The final target appears only through an atomic same-directory hard
+            # link after the temporary file has been flushed and fsynced. A write
+            # or fsync failure therefore cannot expose a partial final target.
+            temp = self.effects_dir / f".{effect_name}.{uuid4().hex}.tmp"
             flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
             if hasattr(os, "O_NOFOLLOW"):
                 flags |= os.O_NOFOLLOW
-            fd = os.open(target, flags, 0o600)
-            with os.fdopen(fd, "wb") as output:
-                output.write(frozen_payload)
-                output.flush()
-                os.fsync(output.fileno())
-            dfd = os.open(self.effects_dir, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            fd = os.open(temp, flags, 0o600)
             try:
-                os.fsync(dfd)
+                with os.fdopen(fd, "wb") as output:
+                    fd = None
+                    output.write(frozen_payload)
+                    output.flush()
+                    os.fsync(output.fileno())
+
+                # link() is atomic and refuses an existing final name, preserving
+                # the historical no-overwrite behavior without publishing a
+                # partially written destination.
+                os.link(temp, target)
+                dfd = os.open(self.effects_dir, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+                try:
+                    os.fsync(dfd)
+                finally:
+                    os.close(dfd)
+                return str(target)
             finally:
-                os.close(dfd)
-            return str(target)
+                if fd is not None:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
+                try:
+                    os.unlink(temp)
+                except FileNotFoundError:
+                    pass
 
         with self._authority_lock:
             self._state = state
