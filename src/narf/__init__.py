@@ -13,7 +13,6 @@ from .gate import (
     EffectBinding,
     FrozenState,
     NARFError,
-    NARFGate,
     ReceiptStore,
     Requirement,
     VerifierBinding,
@@ -21,6 +20,7 @@ from .gate import (
     canonical_json_digest,
     sha256_bytes,
 )
+from .stage_order import NARFGate
 from .operation_guard import OperationBoundEffectExecutor, OperationBoundGate
 from .postgres_authority import PostgresConsumptionAuthority
 from .postgres_fencing import (
