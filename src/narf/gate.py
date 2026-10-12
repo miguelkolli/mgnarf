@@ -405,8 +405,8 @@ class NARFSession:
         return [item["requirement_id"] for item in self.__contract["requirements"]]
 
     def inhibit(self, reason: str) -> None:
-        if self.__closed:
-            raise NARFError("session: finalized")
+        if self.__effect_used:
+            raise NARFError("effect: already consumed")
         _identifier(reason, "inhibitor")
         if reason not in self.__inhibitors:
             self.__inhibitors.append(reason)
@@ -420,7 +420,9 @@ class NARFSession:
             )
         except Exception:
             return True
-        return value is not None and value is not False
+        if type(value) is not bool:
+            return True
+        return value
 
     def _current_state_error(self) -> str | None:
         if self._revoked():
