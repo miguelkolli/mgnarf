@@ -243,6 +243,7 @@ class StageOrderedNARFSession(_BaseNARFSession):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.__stage_lock = threading.RLock()
+        self.__stage_inflight: set[str] = set()
 
     def _identity_context(self) -> dict:
         contract = self._NARFSession__contract
@@ -356,6 +357,8 @@ class StageOrderedNARFSession(_BaseNARFSession):
         with self.__stage_lock:
             contract = self._NARFSession__contract
             runs = self._NARFSession__runs
+            if requirement_id in self.__stage_inflight:
+                raise NARFError("stage_order: stage already in flight")
             if requirement_id in runs:
                 raise NARFError("evidence: duplicate requirement execution")
             if requirement_id not in contract["stage_order"]:
@@ -367,7 +370,11 @@ class StageOrderedNARFSession(_BaseNARFSession):
                 raise NARFError("stage_order: predecessor stage required")
             if not self._valid_pass_prefix(next_index):
                 raise NARFError("stage_order: authenticated PASS predecessor required")
-            return super().execute(requirement_id)
+            self.__stage_inflight.add(requirement_id)
+            try:
+                return super().execute(requirement_id)
+            finally:
+                self.__stage_inflight.discard(requirement_id)
 
     def _decision_order_context(self) -> dict:
         contract = self._NARFSession__contract
