@@ -1,10 +1,10 @@
 # Authenticated stage-order boundary
 
-Status: **DESIGN FREEZE CANDIDATE — ADVERSARIAL REVISION 2 — NO RUNTIME CLAIM YET**
+Status: **DESIGN FREEZE CANDIDATE — ADVERSARIAL REVISION 3 — NO RUNTIME PASS CLAIM IN THIS DOCUMENT**
 
-This document defines the security boundary for optional authenticated stage ordering in MGnarf. It does not claim that the current runtime enforces this property.
+This document defines the security boundary for optional authenticated stage ordering in MGnarf. It does not itself claim that any runtime revision has passed the required acceptance gate.
 
-Revision 2 incorporates an adversarial review of the first draft. In particular, it removes verifier-role ambiguity, closes unordered-required-stage bypass, defines the chain root and final chain-head binding, and requires atomic stage admission against concurrent execution.
+Revision 2 removed verifier-role ambiguity, closed unordered-required-stage bypass, defined the chain root and final chain-head binding, and required atomic stage admission against concurrent execution. Revision 3 adds an explicit no-downgrade composition rule for authority revision, stable operation, fenced-effect and convenience-wrapper paths.
 
 ## 1. Problem
 
@@ -164,8 +164,9 @@ requirements set
 policy
 stage_order digest
 identity-policy context when enabled
-authority revision when enabled
 ```
+
+When monotonic authority revision is enabled, the exact ordered contract MUST also be covered by the authenticated authority-revision binding and repeated current-revision checks. The core verifier receipt does not need to duplicate that revision value if the composed host layer authenticates the exact contract/revision relation and fails closed on mismatch or drift.
 
 Evidence from another session, contract, candidate, policy, ordering policy, identity context, or authority generation must never satisfy the predecessor relation.
 
@@ -309,7 +310,28 @@ The following must fail closed:
 - observed state/identity/authority drift after partial chain followed by restoration;
 - candidate/worker/verifier output attempting to self-assert stage index, predecessor, seed or chain head.
 
-## 15. Versioning and backward compatibility
+## 15. Composition and no-silent-downgrade rule
+
+Stage ordering is not secure if a stronger host wrapper silently reconstructs or forwards the task through an unordered gate.
+
+Therefore every public/composed path that accepts an ordered contract MUST do one of exactly two things:
+
+1. preserve the ordered contract and enforce its authenticated ordering semantics end-to-end; or
+2. reject the operation fail closed before verifier execution.
+
+It MUST NOT silently omit `stage_order`, reinterpret ordered evidence as an older unordered evidence version, or create a new unordered contract for the same requested authorization.
+
+For the existing hardened paths this means:
+
+- **authority revision:** its authenticated revision binding must cover the exact ordered contract. If the authority-binding schema has an ordered variant, that variant must bind `stage_order_sha256` (or an equivalent exact ordered-contract commitment). Authenticated downgrade of that binding to an unordered variant must fail closed;
+- **stable operation:** the operation binding must reference the exact ordered contract ID. It must not authorize reconstruction of an unordered contract or bypass ordered finalization;
+- **fenced operation/effect:** the fencing path must preserve the exact ordered contract through authority revision, stable-operation reservation, fence issuance and guarded effect entry. Existing fence semantics remain additional conditions, not replacements for stage ordering;
+- **convenience/public wrappers:** a wrapper that does not implement ordered semantics must reject an ordered request rather than ignore the field;
+- **legacy core gate:** an older gate that does not know the ordered evidence version must reject the ordered contract rather than accept it while ignoring unknown ordering fields.
+
+A composed wrapper may bind authority revision or operation identity transitively through the exact authenticated contract rather than duplicating every field in every receipt, but the chain of authenticated bindings must be unambiguous and downgrade-resistant.
+
+## 16. Versioning and backward compatibility
 
 Existing evidence versions MUST NOT silently acquire new ordering semantics.
 
@@ -327,7 +349,7 @@ No current v1/v2 contract may be reinterpreted as ordered merely because a new r
 
 Omitting stage-order policy preserves current behavior and receipt schema for that existing semantic class.
 
-## 16. Required adversarial cases
+## 17. Required adversarial cases
 
 Before runtime stage ordering can be called PASS, tests must cover at minimum:
 
@@ -355,12 +377,18 @@ Before runtime stage ordering can be called PASS, tests must cover at minimum:
 22. concurrent future-stage probes cannot skip a required predecessor;
 23. chain seed from another session cannot seed the first stage;
 24. final decision with wrong/non-final chain head -> BLOCKED;
-25. correct complete A -> B -> authority chain plus all existing MGnarf conditions -> PASS;
-26. effect remains single-use and bound to the final authenticated decision;
-27. non-ordering contracts retain their current semantics;
-28. existing full regression suite remains green.
+25. authenticated authority binding with wrong stage-order digest -> BLOCKED;
+26. authenticated downgrade of ordered authority binding to unordered binding -> BLOCKED;
+27. legacy core gate presented with ordered evidence version -> rejected, never unordered PASS;
+28. authority-revision wrapper preserves ordered execution -> PASS only in correct order;
+29. stable-operation wrapper preserves ordered execution -> PASS only in correct order;
+30. fenced-operation wrapper preserves ordered execution -> PASS only in correct order;
+31. correct complete A -> B -> authority chain plus all existing MGnarf conditions -> PASS;
+32. effect remains single-use and bound to the final authenticated decision;
+33. non-ordering contracts retain their current semantics;
+34. existing full regression suite remains green.
 
-## 17. Non-goals
+## 18. Non-goals
 
 The first stage-order implementation does not prove:
 
@@ -374,7 +402,7 @@ The first stage-order implementation does not prove:
 
 Those are separate claims and must not be implied by this feature.
 
-## 18. Implementation gate
+## 19. Implementation gate
 
 Runtime work may begin only after this revised design is deliberately accepted or amended.
 
@@ -386,9 +414,10 @@ recon exact current main and composed wrappers
   -> adversarial tests first
   -> smallest runtime change
   -> focused concurrency/adversarial tests
+  -> composition/no-downgrade tests
   -> full regression suite
   -> whole-chain review
   -> exact-SHA evidence
 ```
 
-Until the runtime work and evidence complete, MGnarf documentation MUST continue to state that the current identity chain proves required participation and separation, not authenticated predecessor ordering.
+Until the runtime work and evidence complete, MGnarf documentation MUST continue to state that the current released identity chain proves required participation and separation, not authenticated predecessor ordering.
