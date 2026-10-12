@@ -1,0 +1,74 @@
+name: NARF v1.70 whole-chain candidate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: narf-v170-whole-chain-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  whole-chain:
+    name: v1.70 whole-chain adversarial (10 protected cases)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: src
+      CI_EVIDENCE: /tmp/narf-v170-whole-chain
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run fresh v1.70 whole-chain adversarial suite
+        shell: bash
+        run: |
+          mkdir -p "$CI_EVIDENCE"
+          python3 - <<'PY' 2>&1 | tee "$CI_EVIDENCE/unittest.log"
+          import json, os, subprocess, unittest
+          from pathlib import Path
+
+          evidence = Path(os.environ["CI_EVIDENCE"])
+          suite = unittest.defaultTestLoader.loadTestsFromName("test_v170_whole_chain", module=None)
+          if suite.countTestCases() == 0:
+              suite = unittest.defaultTestLoader.discover("tests", pattern="test_v170_whole_chain.py")
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          passed = (
+              result.testsRun == 10
+              and len(result.failures) == 0
+              and len(result.errors) == 0
+              and len(result.skipped) == 0
+          )
+          summary = {
+              "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "tests": result.testsRun,
+              "failures": len(result.failures),
+              "errors": len(result.errors),
+              "skips": len(result.skipped),
+              "protected_cases": 10 if passed else 0,
+              "result": "PASS" if passed else "FAIL",
+          }
+          (evidence / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+          print(json.dumps(summary, indent=2))
+          raise SystemExit(0 if passed else 1)
+          PY
+
+      - name: Compile release whole-chain regression
+        run: python3 -m compileall -q tests/test_v170_whole_chain.py
+
+      - name: Preserve v1.70 whole-chain evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: narf-v170-whole-chain-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.CI_EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 30
