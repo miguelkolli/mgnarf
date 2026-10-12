@@ -94,6 +94,73 @@ def scope_state(admin_dsn: str):
     return {"authority_revision": int(rows[0][0]), "fence_sequence": int(rows[0][1])}
 
 
+def blocked_sql(dsn: str, sql: str) -> dict:
+    psycopg = psycopg_module()
+    try:
+        with psycopg.connect(dsn, autocommit=True) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql)
+        return {"blocked": False, "error_type": None}
+    except Exception as error:
+        return {"blocked": True, "error_type": type(error).__name__}
+
+
+def prove_split_role_boundary(issuer_dsn: str, target_dsn: str, control_dsn: str, admin_dsn: str) -> dict:
+    cases = [
+        (
+            "target-cannot-update-authority-revision",
+            target_dsn,
+            "UPDATE narf_fence_scopes SET authority_revision = authority_revision + 1 WHERE scope_id = 'deployment:production-a'",
+        ),
+        (
+            "target-cannot-update-fence-sequence",
+            target_dsn,
+            "UPDATE narf_fence_scopes SET fence_sequence = fence_sequence + 1 WHERE scope_id = 'deployment:production-a'",
+        ),
+        (
+            "issuer-cannot-update-authority-revision",
+            issuer_dsn,
+            "UPDATE narf_fence_scopes SET authority_revision = authority_revision + 1 WHERE scope_id = 'deployment:production-a'",
+        ),
+        (
+            "control-cannot-update-fence-sequence",
+            control_dsn,
+            "UPDATE narf_fence_scopes SET fence_sequence = fence_sequence + 1 WHERE scope_id = 'deployment:production-a'",
+        ),
+        (
+            "target-cannot-insert-issuance",
+            target_dsn,
+            "INSERT INTO narf_fence_issuance(scope_id,fence_sequence,operation_id,authority_revision,effect_id,effect_version,authority_id) VALUES ('deployment:production-a',99,'00000000-0000-0000-0000-000000000099',11,'deploy','1','forged')",
+        ),
+        (
+            "control-cannot-insert-effect",
+            control_dsn,
+            "INSERT INTO narf_fenced_effects(operation_id,scope_id,fence_sequence,authority_revision,effect_id,effect_version,payload) VALUES ('00000000-0000-0000-0000-000000000098','deployment:production-a',1,11,'deploy','1','forged')",
+        ),
+    ]
+    results = []
+    for name, dsn, sql in cases:
+        row = blocked_sql(dsn, sql)
+        results.append({"case": name, **row})
+
+    state = scope_state(admin_dsn)
+    issuance_rows = scalar(admin_dsn, "SELECT count(*) FROM narf_fence_issuance")
+    effect_rows = scalar(admin_dsn, "SELECT count(*) FROM narf_fenced_effects")
+    passed = (
+        all(row["blocked"] for row in results)
+        and state == {"authority_revision": 11, "fence_sequence": 0}
+        and issuance_rows == 0
+        and effect_rows == 0
+    )
+    return {
+        "result": "PASS" if passed else "FAIL",
+        "cases": results,
+        "scope_after_attempts": state,
+        "issuance_rows": issuance_rows,
+        "effect_rows": effect_rows,
+    }
+
+
 def actors():
     return {
         "builder": {"principal_id": "agent:builder", "trust_domain": "build-plane"},
@@ -181,6 +248,18 @@ def target(api, target_dsn: str):
 
 def run_current_fence(output, api, issuer_dsn, target_dsn, control_dsn, admin_dsn):
     reset(admin_dsn)
+    role_boundary = prove_split_role_boundary(issuer_dsn, target_dsn, control_dsn, admin_dsn)
+    dump(output / "role-boundary.json", role_boundary)
+    if role_boundary["result"] != "PASS":
+        row = {
+            "case": "current-fence-commits",
+            "result": "FAIL",
+            "reason": "split-role privilege boundary failed",
+            "role_boundary": role_boundary,
+        }
+        dump(output / "current.json", row)
+        return row
+
     pg_target = target(api, target_dsn)
     root, session, executor, operation_id, _authority, _control = make_session(
         api, issuer_dsn, control_dsn, lambda token: pg_target.commit(token, "baseline")
@@ -194,7 +273,14 @@ def run_current_fence(output, api, issuer_dsn, target_dsn, control_dsn, admin_ds
             and scalar(admin_dsn, "SELECT count(*) FROM narf_consumption_ledger") == 1
             and scope_state(admin_dsn) == {"authority_revision": 11, "fence_sequence": 1}
         )
-        row = {"case": "current-fence-commits", "result": "PASS" if passed else "FAIL", "returned": result, "operation_id": operation_id, "scope": scope_state(admin_dsn)}
+        row = {
+            "case": "current-fence-commits",
+            "result": "PASS" if passed else "FAIL",
+            "returned": result,
+            "operation_id": operation_id,
+            "scope": scope_state(admin_dsn),
+            "role_boundary": role_boundary,
+        }
         dump(output / "current.json", row)
         return row
     finally:
@@ -374,7 +460,7 @@ def main():
         "planned_cases": 6,
         "counts": counts,
         "cases": rows,
-        "claim": "For this measured PostgreSQL advisory-lock transaction model, authority transitions and fence ordering are enforced at target commit; privileged rollback remains outside the measured guarantee.",
+        "claim": "For this measured PostgreSQL advisory-lock transaction model, authority transitions and fence ordering are enforced at target commit; split-role privilege boundaries were actively probed; privileged rollback remains outside the measured guarantee.",
     }
     dump(args.output / "summary.json", summary)
     print(json.dumps(summary, indent=2, sort_keys=True))
