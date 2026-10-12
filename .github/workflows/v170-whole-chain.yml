@@ -48,9 +48,10 @@ jobs:
           from pathlib import Path
 
           evidence = Path(os.environ["CI_EVIDENCE"])
-          suite = unittest.defaultTestLoader.discover(
-              "tests", pattern="test_v170_whole_chain.py"
-          )
+          loader = unittest.defaultTestLoader
+          suite = unittest.TestSuite()
+          suite.addTests(loader.discover("tests", pattern="test_v170_whole_chain.py"))
+          suite.addTests(loader.discover("tests", pattern="test_v170_stage_order_release.py"))
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           actual_sha = subprocess.check_output(
               ["git", "rev-parse", "HEAD"], text=True
@@ -79,7 +80,10 @@ jobs:
           PY
 
       - name: Compile release whole-chain regression
-        run: python3 -m compileall -q tests/test_v170_whole_chain.py
+        run: >-
+          python3 -m compileall -q
+          tests/test_v170_whole_chain.py
+          tests/test_v170_stage_order_release.py
 
       - name: Preserve v1.70 whole-chain evidence
         if: always()
