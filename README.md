@@ -25,6 +25,30 @@ NARF is a standalone fail-closed acceptance gate for AI-assisted and automated w
 
 It has no required parent framework, private repository, workspace variable, external governance runtime or project harness. The core reference gate uses the Python standard library. Optional authority adapters add dependencies only for their own measured boundary.
 
+## Where does MGnarf go?
+
+Put MGnarf **between verified work and the real effect** — as close as practical to the deploy, database write, email/API mutation, file publication, or device command that changes the outside world.
+
+```text
+AI / automation
+      |
+      v
+produces candidate
+      |
+      v
+verification / tests
+      |
+      v
+    MGNARF
+      |
+      v
+real effect
+```
+
+The credential that can perform the protected effect must stay on the trusted-host side. If the agent can call the deploy/API/database/device path directly, it can bypass the gate.
+
+See [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md) for stack-oriented placement and integration patterns for GitHub Actions + deploy targets, AI coding agents, PostgreSQL, email/external APIs, Python/file publication, and IoT/device control.
+
 ## Status: v1.61 — stable immutable release
 
 `v1.61` is published as an immutable stable patch release pinned to its verified freeze commit. It preserves the measured v1.60 behavioral boundary and adds signed-witness slow-header deadline hardening plus exact regression coverage for that reproduced availability finding. **Stable freezes the v1.61 behavioral contract and measured reference boundary; it is not a claim that every deployment is secure, that every external effect is exactly-once, or that MgNarf has received an independent security certification.**
@@ -93,6 +117,7 @@ These are measured reference boundaries, not an independent security certificati
 - [NARF-SPEC.md](NARF-SPEC.md) — behavioral specification.
 - [INDEPENDENCE.md](INDEPENDENCE.md) — standalone/dependency boundary.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — reference architecture and trust boundary.
+- [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md) — where MGnarf belongs in common stacks and what the trusted host must own.
 - [HOST-CONTRACT.md](HOST-CONTRACT.md) — host locking, immutable effect input and persistence obligations.
 - [REFERENCE-HOST.md](REFERENCE-HOST.md) and [PROCESS-BOUNDARY.md](PROCESS-BOUNDARY.md) — trusted-host examples.
 - [ROLLBACK-BOUNDARY.md](ROLLBACK-BOUNDARY.md), [ROLLBACK-HARDENING.md](ROLLBACK-HARDENING.md) and [MULTIDOMAIN-FENCING.md](MULTIDOMAIN-FENCING.md) — measured rollback boundaries.
@@ -149,7 +174,7 @@ Verifier artifacts are hashed and authenticated as evidence, but the gate does n
 - Session execution state is memory-resident. A crash can require a fresh session and repeated verification.
 - The reference fixtures do not certify an arbitrary production sandbox, database control plane, witness operator, deployment or remote target.
 
-Read [HOST-CONTRACT.md](HOST-CONTRACT.md), [RELEASE-v1.61.md](RELEASE-v1.61.md) and [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md) before integrating an effect. NARF PASS applies only to the measured scope.
+Read [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md), [HOST-CONTRACT.md](HOST-CONTRACT.md), [RELEASE-v1.61.md](RELEASE-v1.61.md) and [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md) before integrating an effect. NARF PASS applies only to the measured scope.
 
 ## License and attribution
 
