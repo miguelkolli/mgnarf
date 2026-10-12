@@ -25,9 +25,9 @@ NARF is a standalone fail-closed acceptance gate for AI-assisted and automated w
 
 It has no required parent framework, private repository, workspace variable, external governance runtime or project harness. The core reference gate uses the Python standard library. Optional authority adapters add dependencies only for their own measured boundary.
 
-## Status: beta reference implementation — v1.60 RC2 track
+## Status: v1.60 RC2 — immutable prerelease
 
-`v1.60-rc1` is published as an immutable prerelease pinned to its verified release commit. Current `main` is in the `v1.60-rc2` hardening track after a blind post-RC1 red-team pass reproduced three issues and confirmed a fourth canonical-task boundary already fixed in RC1. **RC2 is publishable only when an immutable tag points to the exact merged `main` commit whose required aggregate checks have succeeded.**
+`v1.60-rc2` is published as an immutable prerelease pinned to its verified release commit. It contains the post-RC1 red-team hardening for three reproduced findings and regression coverage for a fourth canonical-task boundary that was already fixed in RC1. **RC2 is not the stable v1.60 release and is not an independent security certification.**
 
 The merge-required reference gate covers repository tests and compilation, strict canonical task binding, distinct UID/GID isolation, trusted-host/untrusted-worker process separation, crash persistence, filesystem rollback characterization, rollback hardening, multi-domain fencing, PostgreSQL consumption authority, Ed25519 signed witness fencing, stable operation-ID binding, high-fanout same-operation races, ambiguous durable-reservation outcomes, and the strict trusted reference-host transition. A required boundary that fails, skips or is cancelled prevents the aggregate required check from succeeding.
 
