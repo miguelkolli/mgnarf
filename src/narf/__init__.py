@@ -23,6 +23,11 @@ from .gate import (
 )
 from .operation_guard import OperationBoundEffectExecutor, OperationBoundGate
 from .postgres_authority import PostgresConsumptionAuthority
+from .postgres_fencing import (
+    PostgresFenceControlPlane,
+    PostgresFencedTarget,
+    PostgresFencingAuthority,
+)
 from .rollback_guard import (
     AllOfConsumptionAuthority,
     ConsumptionAuthority,
@@ -51,6 +56,9 @@ __all__ = [
     "OperationBoundEffectExecutor",
     "OperationBoundGate",
     "PostgresConsumptionAuthority",
+    "PostgresFenceControlPlane",
+    "PostgresFencedTarget",
+    "PostgresFencingAuthority",
     "ReceiptStore",
     "Requirement",
     "RollbackProtectedEffectExecutor",
