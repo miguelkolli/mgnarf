@@ -15,35 +15,51 @@ reference integration uses one PostgreSQL serialization domain for:
 
 The runtime pieces are:
 
-- `PostgresFencingAuthority` — issues a new fence only while holding the scope
-  row lock and only when the expected authority revision is still current;
-- `PostgresFenceControlPlane` — advances the authority revision on the same scope
-  row;
-- `PostgresFencedTarget` — takes a SHARE lock on that scope row, validates the
-  current authority revision and latest fence sequence, validates the exact
-  issuance row, and inserts the effect in that same transaction.
+- `PostgresFencingAuthority` — obtains a transaction-scoped advisory lock for
+  the `fence_scope_id`, then issues a new fence only if the expected authority
+  revision is still current;
+- `PostgresFenceControlPlane` — obtains the same advisory lock before advancing
+  the authority revision;
+- `PostgresFencedTarget` — obtains that same advisory lock, validates the current
+  authority revision and latest fence sequence, validates the exact issuance row,
+  and inserts the effect in that same transaction.
+
+## Why advisory locking
+
+The target is intentionally a read-mostly runtime role. PostgreSQL locking clauses
+such as `SELECT ... FOR SHARE` require privileges that would force the target role
+to receive UPDATE authority on the protected scope table. The reference model
+instead uses `pg_advisory_xact_lock` with a stable signed 64-bit key derived from
+`fence_scope_id`.
+
+Issuer, control-plane, and target all take that same transaction-scoped advisory
+lock before touching the authoritative scope state. The target therefore needs
+only SELECT on scope/issuance state and INSERT on the measured effect table.
 
 ## Serialization rule
 
-For one `fence_scope_id`, issuance and authority transition update the same row.
-The target commit locks that row with `FOR SHARE` before it validates the token.
-Therefore PostgreSQL determines an order:
+For one `fence_scope_id`, PostgreSQL determines one order through the common
+transaction-scoped advisory lock:
 
 ```text
-target commit lock first
-  -> target may commit old generation
-  -> later authority transition happens after that commit
+target gets scope advisory lock first
+  -> target validates and may commit old generation
+  -> transaction ends and releases lock
+  -> later authority transition occurs after that commit
 ```
 
 or:
 
 ```text
-authority transition lock first
-  -> revision advances
-  -> target waits
+authority transition gets scope advisory lock first
+  -> revision advances and transaction commits
+  -> target acquires lock afterwards
   -> target sees newer revision
   -> old fence is rejected
 ```
+
+Fence issuance uses the same lock, so transition and issuance cannot pass each
+other invisibly inside the measured database boundary.
 
 This is stronger than a second client-side snapshot because the validation is
 inside the transaction that commits the measured external effect.
@@ -72,7 +88,9 @@ The CI reference uses separate PostgreSQL roles:
 - target: SELECT scope/issuance and INSERT the external effect row;
 - control plane: SELECT scope state and UPDATE only `authority_revision`.
 
-Schema creation and destructive administration remain outside those runtime roles.
+The common advisory lock does not require granting the target UPDATE permission on
+the scope row. Schema creation and destructive administration remain outside those
+runtime roles.
 
 ## Measured cases
 
@@ -83,9 +101,10 @@ The dedicated CI harness requires:
    rejects the old fence with zero effect rows and without requiring a newer
    effect;
 3. a newer fence in the same scope makes the older fence stale;
-4. an in-progress authority transition serializes with fence acquisition;
-5. an in-progress authority transition serializes with target commit and the old
-   token is rejected after the transition commits;
+4. an in-progress authority transition holds the shared scope advisory lock and
+   serializes fence acquisition;
+5. an in-progress authority transition holds that same advisory lock and
+   serializes target commit; the old token is rejected after transition commit;
 6. privileged rollback of the authoritative PostgreSQL state is reproduced as a
    `LIMITATION_CONFIRMED`, not relabeled as protected.
 
@@ -93,9 +112,10 @@ The dedicated CI harness requires:
 
 Allowed claim for the measured configuration:
 
-> For the tested PostgreSQL transaction/role configuration, authority transitions
-> and fence ordering are validated at the external effect commit boundary; a
-> transition that commits before the effect commit invalidates the older fence.
+> For the tested PostgreSQL advisory-lock transaction/role configuration,
+> authority transitions and fence ordering are validated at the external effect
+> commit boundary; a transition that commits before the effect commit invalidates
+> the older fence.
 
 Not claimed:
 
@@ -104,7 +124,9 @@ Not claimed:
   rewrite the authoritative fencing state;
 - availability after ambiguous failures;
 - protection when an integration bypasses the fenced target and writes directly
-  with more powerful credentials.
+  with more powerful credentials;
+- safety if different participants derive different advisory-lock keys for the
+  same logical scope.
 
-The database, schema privileges, transaction behavior, and target adapter are all
-part of the measured trust boundary.
+The database, scope-to-lock-key derivation, schema privileges, transaction
+behavior, and target adapter are all part of the measured trust boundary.
