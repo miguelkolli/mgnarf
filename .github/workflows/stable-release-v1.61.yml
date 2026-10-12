@@ -1,0 +1,109 @@
+name: Prepare or verify v1.61 stable
+
+on:
+  workflow_run:
+    workflows: ["NARF reference checks"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Prepare draft or verify immutable v1.61 stable
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERIFIED_MAIN_SHA: ${{ github.event.workflow_run.head_sha }}
+      RELEASE_TAG: v1.61
+    steps:
+      - name: Checkout exact verified main revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.VERIFIED_MAIN_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify workflow source binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$VERIFIED_MAIN_SHA"
+          test -f RELEASE-v1.61.md
+          test -f TEST-REPORT-v1.61.md
+
+      - name: Prepare draft or verify published immutable stable release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          latest_aggregate() {
+            gh api "repos/${GITHUB_REPOSITORY}/commits/$1/check-runs?per_page=100" \
+              --jq '[.check_runs[] | select(.name == "Reference tests (no skips)")] | sort_by(.started_at) | last | .conclusion'
+          }
+
+          # Once published, v1.61 is historical evidence and must never follow moving main.
+          if existing_ref="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" 2>/dev/null)"; then
+            existing_type="$(printf '%s' "$existing_ref" | jq -r '.object.type')"
+            existing_sha="$(printf '%s' "$existing_ref" | jq -r '.object.sha')"
+            test "$existing_type" = "commit"
+
+            pinned_aggregate="$(latest_aggregate "$existing_sha")"
+            if [ "$pinned_aggregate" != "success" ]; then
+              echo "Existing ${RELEASE_TAG} source ${existing_sha} lacks a successful latest Reference tests (no skips) gate." >&2
+              exit 1
+            fi
+
+            release="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+            test "$(printf '%s' "$release" | jq -r '.immutable')" = "true"
+            test "$(printf '%s' "$release" | jq -r '.draft')" = "false"
+            test "$(printf '%s' "$release" | jq -r '.prerelease')" = "false"
+            test "$(printf '%s' "$release" | jq -r '.target_commitish')" = "$existing_sha"
+            echo "${RELEASE_TAG} remains immutable and pinned to ${existing_sha}; current verified main is ${VERIFIED_MAIN_SHA}."
+            exit 0
+          fi
+
+          current_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [ "$current_main" != "$VERIFIED_MAIN_SHA" ]; then
+            echo "main moved from verified SHA ${VERIFIED_MAIN_SHA} to ${current_main}; refusing stable draft preparation." >&2
+            exit 1
+          fi
+
+          aggregate="$(latest_aggregate "$VERIFIED_MAIN_SHA")"
+          if [ "$aggregate" != "success" ]; then
+            echo "Latest Reference tests (no skips) is not success on ${VERIFIED_MAIN_SHA}; refusing stable draft preparation." >&2
+            exit 1
+          fi
+
+          draft_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\" and .draft == true) | .id" | head -n 1)"
+
+          if [ -z "$draft_id" ]; then
+            draft_payload="$(jq -n \
+              --arg tag "$RELEASE_TAG" \
+              --arg target "$VERIFIED_MAIN_SHA" \
+              --arg name "$RELEASE_TAG" \
+              --rawfile body RELEASE-v1.61.md \
+              '{tag_name:$tag,target_commitish:$target,name:$name,body:$body,draft:true,prerelease:false}')"
+            draft_id="$(printf '%s' "$draft_payload" | gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/releases" --input - --jq '.id')"
+          fi
+
+          test -n "$draft_id"
+          draft="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${draft_id}")"
+          test "$(printf '%s' "$draft" | jq -r '.tag_name')" = "$RELEASE_TAG"
+          test "$(printf '%s' "$draft" | jq -r '.draft')" = "true"
+          test "$(printf '%s' "$draft" | jq -r '.prerelease')" = "false"
+          test "$(printf '%s' "$draft" | jq -r '.target_commitish')" = "$VERIFIED_MAIN_SHA"
+
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Draft preparation unexpectedly created ${RELEASE_TAG}; refusing acceptance." >&2
+            exit 1
+          fi
+
+          echo "Stable draft ${RELEASE_TAG} is pinned to ${VERIFIED_MAIN_SHA}; no stable tag exists."
+          echo "ADMIN GATE: confirm release immutability remains enabled, then publish this exact draft without retargeting it."
