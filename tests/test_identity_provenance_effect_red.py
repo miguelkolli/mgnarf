@@ -21,8 +21,61 @@ from narf import (
     Requirement,
     VerifierBinding,
     VerifierResult,
+    canonical_json_digest,
     sha256_bytes,
 )
+
+
+class MemoryProvenanceAdmissionAuthority:
+    """Trusted-host test authority with atomic currentness + reservation."""
+
+    def __init__(self, fixture):
+        self.fixture = fixture
+        self.stage_tokens = set()
+        self.effect_tokens = set()
+        self.lock = threading.Lock()
+
+    def _require_current(self, expected_snapshot_sha256, expected_revision):
+        current = deepcopy(self.fixture.current_snapshot)
+        if (
+            canonical_json_digest(current) != expected_snapshot_sha256
+            or current.get("revision") != expected_revision
+        ):
+            raise NARFError("provenance: admission authority state changed")
+
+    def reserve_stage(
+        self,
+        token,
+        *,
+        expected_snapshot_sha256,
+        expected_revision,
+        actor_role,
+        actor_instance_id,
+    ):
+        with self.lock:
+            self._require_current(expected_snapshot_sha256, expected_revision)
+            execution = self.fixture.execution.get(actor_role)
+            if (
+                not isinstance(execution, dict)
+                or execution.get("actor_instance_id") != actor_instance_id
+            ):
+                raise NARFError("provenance: admission actor changed")
+            if token in self.stage_tokens:
+                raise NARFError("provenance: stage admission already consumed")
+            self.stage_tokens.add(token)
+
+    def reserve_effect(
+        self,
+        token,
+        *,
+        expected_snapshot_sha256,
+        expected_revision,
+    ):
+        with self.lock:
+            self._require_current(expected_snapshot_sha256, expected_revision)
+            if token in self.effect_tokens:
+                raise NARFError("provenance: effect admission already consumed")
+            self.effect_tokens.add(token)
 
 
 class ProvenanceEffectFixture:
@@ -92,6 +145,7 @@ class ProvenanceEffectFixture:
             for role, actor in self.snapshot["actors"].items()
             if role.startswith("verifier:")
         }
+        self.admission_authority = MemoryProvenanceAdmissionAuthority(self)
 
     def close(self):
         self.tmp.cleanup()
@@ -156,6 +210,7 @@ class ProvenanceEffectFixture:
             identity_probe=lambda: deepcopy(self.identity_actors),
             provenance_probe=self.provenance_probe,
             execution_probe=self.execution_probe,
+            provenance_admission_authority=self.admission_authority,
         )
         self.assert_pass(session.execute("tests"))
         self.assert_pass(session.execute("security"))
