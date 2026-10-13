@@ -19,12 +19,17 @@ Initial development anchor for this candidate cycle:
 0063c66f144dc7eb8031eb235f8072a7982d5db3
 ```
 
-The exact evaluation SHA for release acceptance must be recorded in the release
-PR/test report. Any code, test, workflow or security-relevant documentation
-change after that point creates a new candidate SHA and restarts the applicable
-gate. Pull-request evidence is candidate evidence only; the final stable release
-still requires fresh push-triggered revalidation on the exact resulting `main`
-SHA under `RELEASE-CHECKLIST.md`.
+The pre-documentation release-branch candidate measured for this freeze was:
+
+```text
+c4ec748822ca3acacb7ce3fd14ffbc881c55baa0
+```
+
+Its evidence is recorded in [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md).
+The documentation/refreeze change containing this file necessarily receives a
+new Git SHA and must be freshly revalidated. No PASS is inherited across that
+SHA change. Final stable publication still requires fresh push-triggered
+revalidation on the exact resulting `main` SHA under `RELEASE-CHECKLIST.md`.
 
 ## Scope
 
@@ -111,10 +116,42 @@ Required result:
 13 protected cases
 ```
 
-This fresh whole-chain gate complements, rather than replaces, the existing
-repository workflows. In particular, PostgreSQL commit-time fencing remains
-measured by the dedicated live PostgreSQL workflow, and the broader stage-order
-Revision 3 adversarial suite remains part of the full repository regression set.
+The same exact-head release workflow also requires the complete repository suite
+and compilation:
+
+```text
+237 tests
+0 failures
+0 errors
+0 skips
+compileall src tests tools: PASS
+```
+
+This gate complements, rather than replaces, the existing repository workflows.
+PostgreSQL commit-time fencing remains measured by the dedicated live PostgreSQL
+workflow, and the broader stage-order Revision 3 adversarial suite remains part
+of the full repository regression set.
+
+## Measured pre-documentation candidate evidence
+
+Exact candidate:
+
+```text
+c4ec748822ca3acacb7ce3fd14ffbc881c55baa0
+```
+
+Measured results:
+
+- v1.70 whole-chain: **13 / 13 PASS**;
+- full repository regression: **237 / 237 PASS**;
+- failures/errors/skips: **0 / 0 / 0**;
+- `compileall -q src tests tools`: **PASS**;
+- v1.70 signed witness: **4 PASS + 1 LIMITATION_CONFIRMED + 0 FAIL**;
+- signed-witness result: **BOUNDARY_CONFIRMED**;
+- all **14 / 14** applicable pull-request workflows: **success**.
+
+See [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md) for the adversarial history,
+protected claims, limitations and workflow evidence.
 
 ## Required release evidence
 
@@ -129,7 +166,8 @@ Before stable publication, the exact v1.70 candidate must satisfy
 - authenticated stage-order Revision 3 adversarial coverage success;
 - live PostgreSQL fenced-target boundary success;
 - recorded protected, `LIMITATION_CONFIRMED`, and `UNVERIFIED` cases;
-- release-specific test report bound to the exact evaluated SHA;
+- release-specific test report;
+- documentation/security-model consistency;
 - final freeze merge with expected-head protection;
 - complete push-triggered revalidation on the exact resulting `main` SHA;
 - only then immutable tag and stable GitHub release publication.
@@ -140,13 +178,19 @@ v1.70 does **not** claim any of the following:
 
 - independent security certification;
 - correctness of verifier domain logic;
-- proof that differently named principals/profiles are administratively or
-  epistemically independent in the real world;
+- proof that differently named principals/profiles/providers are administratively
+  or epistemically independent in the real world;
+- physical wall-clock chronology from authenticated stage ordering;
+- distributed consensus or cross-process shared-session ordering without an
+  external serialized session authority;
+- a general DAG, parallel-stage or optional-stage workflow model;
 - protection from a malicious trusted host that deliberately abandons the
   documented hardened API path;
 - rollback resistance when every preserving authority domain is rolled back
   together;
 - exactly-once remote completion after an ambiguous or failed effect;
+- ordering of arbitrary external side effects beyond the guarded/fenced effect
+  boundary;
 - universal fencing/TOCTOU protection for arbitrary HTTP APIs, cloud providers,
   databases or devices;
 - PostgreSQL Layer C protection against a privileged function/schema owner or
@@ -159,18 +203,23 @@ expected. It is not converted into a security PASS.
 
 ## Candidate decision
 
-At this scope refreeze:
+At this documentation/refreeze step:
 
 ```text
-VERSION:             v1.70
-RELEASE TYPE:        proposed stable capability release
-SCOPE:               FROZEN FOR CANDIDATE REVIEW
-INITIAL ANCHOR:      0063c66f144dc7eb8031eb235f8072a7982d5db3
-EXACT CANDIDATE SHA: TO BE RECORDED AFTER THIS FREEZE COMMIT
-WHOLE-CHAIN REVIEW:  13 PROTECTED CASES REQUIRED
-FINAL RELEASE GATE:  UNVERIFIED
-TAG/RELEASE:         NOT CREATED
+VERSION:                        v1.70
+RELEASE TYPE:                   proposed stable capability release
+SCOPE:                          FROZEN FOR CANDIDATE REVIEW
+INITIAL ANCHOR:                 0063c66f144dc7eb8031eb235f8072a7982d5db3
+MEASURED SOURCE CANDIDATE:      c4ec748822ca3acacb7ce3fd14ffbc881c55baa0
+SOURCE WHOLE-CHAIN:             13 / 13 PASS
+SOURCE FULL REGRESSION:         237 / 237 PASS
+SOURCE SIGNED WITNESS:          4 PASS + 1 LIMITATION_CONFIRMED + 0 FAIL
+DOCUMENTATION-REFREEZE GATE:    UNVERIFIED UNTIL ITS NEW SHA RUNS
+FINAL EXACT-MAIN RELEASE GATE:  UNVERIFIED
+TAG/RELEASE:                    NOT CREATED
 ```
 
-Do not publish `v1.70` until the exact-candidate review, release-specific test
-report, freeze merge and exact-main push gate have all completed.
+Do not publish `v1.70` until the documentation/refreeze candidate has completed
+fresh exact-head verification, the freeze merge has been accepted into `main`
+with expected-head protection, and the exact resulting `main` SHA has completed
+the final push-triggered release gate.
