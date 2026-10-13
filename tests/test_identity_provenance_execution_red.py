@@ -1,15 +1,16 @@
-"""RED acceptance tests for provenance-aware ordered stage execution.
+"""Acceptance tests for provenance-aware ordered execution and admission.
 
-This slice starts only after the A/B/P/C foundation is GREEN. It specifies
-D1 admission -> raw producer result R -> D2 effective completion -> final E
-verification evidence and a provenance-bound final decision. External effect
-admission remains deliberately fail-closed for a later slice.
+The A/B/P/C contract foundation is already GREEN. These tests cover D1/R/D2/E
+stage evidence plus the stronger external admission boundary required by the
+frozen design: a trusted authority must atomically compare current provenance
+and reserve each stage/effect token.
 """
 
 from copy import deepcopy
 import json
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 
 from narf import (
@@ -24,6 +25,76 @@ from narf import (
     canonical_json_digest,
     sha256_bytes,
 )
+
+
+class MemoryProvenanceAdmissionAuthority:
+    """Test trusted-host authority with atomic compare-and-reserve semantics."""
+
+    def __init__(self, fixture):
+        self.fixture = fixture
+        self.stage_tokens = set()
+        self.effect_tokens = set()
+        self.lock = threading.Lock()
+        self.stage_before_check = None
+        self.effect_before_check = None
+        self.effect_after_reserve = None
+        self.effect_barrier = None
+
+    def _require_current(self, expected_snapshot_sha256, expected_revision):
+        current = deepcopy(self.fixture.current_snapshot)
+        if (
+            canonical_json_digest(current) != expected_snapshot_sha256
+            or current.get("revision") != expected_revision
+        ):
+            raise NARFError("provenance: admission authority state changed")
+
+    def reserve_stage(
+        self,
+        token,
+        *,
+        expected_snapshot_sha256,
+        expected_revision,
+        actor_role,
+        actor_instance_id,
+    ):
+        with self.lock:
+            if self.stage_before_check is not None:
+                hook = self.stage_before_check
+                self.stage_before_check = None
+                hook()
+            self._require_current(expected_snapshot_sha256, expected_revision)
+            current_execution = self.fixture.execution.get(actor_role)
+            if (
+                not isinstance(current_execution, dict)
+                or current_execution.get("actor_instance_id") != actor_instance_id
+            ):
+                raise NARFError("provenance: admission actor changed")
+            if token in self.stage_tokens:
+                raise NARFError("provenance: stage admission already consumed")
+            self.stage_tokens.add(token)
+
+    def reserve_effect(
+        self,
+        token,
+        *,
+        expected_snapshot_sha256,
+        expected_revision,
+    ):
+        if self.effect_barrier is not None:
+            self.effect_barrier.wait(timeout=5)
+        with self.lock:
+            if self.effect_before_check is not None:
+                hook = self.effect_before_check
+                self.effect_before_check = None
+                hook()
+            self._require_current(expected_snapshot_sha256, expected_revision)
+            if token in self.effect_tokens:
+                raise NARFError("provenance: effect admission already consumed")
+            self.effect_tokens.add(token)
+            if self.effect_after_reserve is not None:
+                hook = self.effect_after_reserve
+                self.effect_after_reserve = None
+                hook()
 
 
 class ProvenanceExecutionFixture:
@@ -104,6 +175,7 @@ class ProvenanceExecutionFixture:
                 **deepcopy(self.snapshot["actors"]["verifier:check-b"]),
             },
         }
+        self.admission_authority = MemoryProvenanceAdmissionAuthority(self)
 
     def close(self):
         self.tmp.cleanup()
@@ -158,7 +230,9 @@ class ProvenanceExecutionFixture:
             provenance_snapshot=self.snapshot,
         )
 
-    def session(self, contract_id, *, bindings=None):
+    def session(self, contract_id, *, bindings=None, admission_authority=None):
+        if admission_authority is None:
+            admission_authority = self.admission_authority
         return self.gate.open_session(
             contract_id,
             self.task,
@@ -168,6 +242,7 @@ class ProvenanceExecutionFixture:
             identity_probe=lambda: deepcopy(self.identity_actors),
             provenance_probe=self.provenance_probe,
             execution_probe=self.execution_probe,
+            provenance_admission_authority=admission_authority,
         )
 
     def evidence(self, evidence_type=None):
@@ -185,13 +260,41 @@ class ProvenanceExecutionFixture:
         envelope["mac"] = self.store._mac(envelope["payload"])
         path.write_text(json.dumps(envelope))
 
+    def complete_pass_chain(self):
+        contract_id = self.freeze()
+        session = self.session(contract_id)
+        session.execute("tests")
+        session.execute("security")
+        self.assert_pass(session.finalize())
+        return contract_id, session
+
+    @staticmethod
+    def assert_pass(decision):
+        if decision.get("result") != "PASS":
+            raise AssertionError(decision)
+
 
 class ProvenanceExecutionRedTests(unittest.TestCase):
     def setUp(self):
         self.fx = ProvenanceExecutionFixture()
         self.addCleanup(self.fx.close)
 
-    def test_pass_stage_creates_d1_d2_and_final_e_receipt(self):
+    def test_missing_admission_authority_blocks_v4_open_session(self):
+        contract_id = self.fx.freeze()
+        with self.assertRaises(NARFError):
+            self.fx.gate.open_session(
+                contract_id,
+                self.fx.task,
+                verifier_bindings=self.fx.bindings(),
+                effect_binding=self.fx.effect(),
+                state_probe=self.fx.state_probe,
+                identity_probe=lambda: deepcopy(self.fx.identity_actors),
+                provenance_probe=self.fx.provenance_probe,
+                execution_probe=self.fx.execution_probe,
+            )
+        self.assertEqual(self.fx.calls, [])
+
+    def test_pass_stage_creates_authority_reserved_d1_d2_and_final_e_receipt(self):
         contract_id = self.fx.freeze()
         session = self.fx.session(contract_id)
         result = session.execute("tests")
@@ -213,6 +316,7 @@ class ProvenanceExecutionRedTests(unittest.TestCase):
         self.assertEqual(d1["session_id"], session.session_id)
         self.assertEqual(d1["requirement_id"], "tests")
         self.assertEqual(d1["actor_instance_id"], "runner:tests:1")
+        self.assertIn(d1["run_id"], self.fx.admission_authority.stage_tokens)
         self.assertEqual(d2["evidence_type"], "narf.provenance-stage-completion")
         self.assertEqual(d2["provenance_admission_id"], d1["run_id"])
         self.assertEqual(d2["producer_status"], "PASS")
@@ -220,6 +324,19 @@ class ProvenanceExecutionRedTests(unittest.TestCase):
         self.assertEqual(e["provenance_admission_sha256"], canonical_json_digest(d1))
         self.assertEqual(e["provenance_completion_sha256"], canonical_json_digest(d2))
         self.assertEqual(e["producer_result_sha256"], d2["producer_result_sha256"])
+
+    def test_external_provenance_transition_winning_stage_reservation_blocks_before_d1_and_producer(self):
+        def transition_first():
+            self.fx.current_snapshot["revision"] += 1
+
+        self.fx.admission_authority.stage_before_check = transition_first
+        contract_id = self.fx.freeze()
+        session = self.fx.session(contract_id)
+        with self.assertRaises(NARFError):
+            session.execute("tests")
+        self.assertEqual(self.fx.calls, [])
+        self.assertEqual(self.fx.evidence("narf.provenance-stage-admission"), [])
+        self.assertEqual(self.fx.admission_authority.stage_tokens, set())
 
     def test_future_stage_blocks_before_producer_and_before_d1(self):
         contract_id = self.fx.freeze()
@@ -321,15 +438,92 @@ class ProvenanceExecutionRedTests(unittest.TestCase):
         self.assertEqual(receipt["provenance_binding_id"], self.fx.store.load(contract_id)["provenance_binding_id"])
         self.assertEqual(receipt["provenance_revision"], 11)
 
-    def test_effect_remains_fail_closed_after_provenance_stage_slice(self):
+    def test_effect_admission_reserves_once_and_binds_v4_provenance(self):
+        contract_id = self.fx.freeze()
+        session = self.fx.session(contract_id)
+        session.execute("tests")
+        session.execute("security")
+        decision = session.finalize()
+        self.assertEqual(decision["result"], "PASS")
+        self.assertEqual(session.execute_effect(), "published")
+        self.assertEqual(self.fx.effects, ["published"])
+        self.assertEqual(len(self.fx.admission_authority.effect_tokens), 1)
+        with self.assertRaises(NARFError):
+            session.execute_effect()
+        self.assertEqual(self.fx.effects, ["published"])
+
+        effects = self.fx.evidence("narf.effect")
+        self.assertEqual(len(effects), 1)
+        receipt = effects[0]
+        self.assertEqual(receipt["evidence_version"], 4)
+        self.assertEqual(receipt["contract_id"], contract_id)
+        self.assertEqual(receipt["decision_id"], decision["decision_id"])
+        self.assertEqual(receipt["provenance_binding_id"], self.fx.store.load(contract_id)["provenance_binding_id"])
+        self.assertEqual(receipt["provenance_revision"], 11)
+
+    def test_provenance_transition_winning_effect_reservation_blocks_callback(self):
         contract_id = self.fx.freeze()
         session = self.fx.session(contract_id)
         session.execute("tests")
         session.execute("security")
         self.assertEqual(session.finalize()["result"], "PASS")
+
+        def transition_first():
+            self.fx.current_snapshot["revision"] += 1
+
+        self.fx.admission_authority.effect_before_check = transition_first
         with self.assertRaises(NARFError):
             session.execute_effect()
         self.assertEqual(self.fx.effects, [])
+        self.assertEqual(self.fx.admission_authority.effect_tokens, set())
+        self.assertEqual(self.fx.evidence("narf.effect"), [])
+
+    def test_effect_reservation_winning_race_admits_one_effect_even_if_provenance_changes_after_reserve(self):
+        contract_id = self.fx.freeze()
+        session = self.fx.session(contract_id)
+        session.execute("tests")
+        session.execute("security")
+        self.assertEqual(session.finalize()["result"], "PASS")
+
+        def transition_after_reserve():
+            self.fx.current_snapshot["revision"] += 1
+
+        self.fx.admission_authority.effect_after_reserve = transition_after_reserve
+        self.assertEqual(session.execute_effect(), "published")
+        self.assertEqual(self.fx.effects, ["published"])
+        self.assertEqual(len(self.fx.admission_authority.effect_tokens), 1)
+
+    def test_concurrent_duplicate_effect_attempts_admit_at_most_one(self):
+        contract_id = self.fx.freeze()
+        session = self.fx.session(contract_id)
+        session.execute("tests")
+        session.execute("security")
+        self.assertEqual(session.finalize()["result"], "PASS")
+        self.fx.admission_authority.effect_barrier = threading.Barrier(2)
+
+        outcomes = []
+        lock = threading.Lock()
+
+        def worker():
+            try:
+                value = session.execute_effect()
+                result = ("ok", value)
+            except Exception as error:
+                result = ("error", type(error).__name__)
+            with lock:
+                outcomes.append(result)
+
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=5)
+
+        self.assertEqual(len(outcomes), 2)
+        self.assertEqual(sum(1 for kind, _ in outcomes if kind == "ok"), 1)
+        self.assertEqual(self.fx.effects, ["published"])
+        self.assertEqual(len(self.fx.admission_authority.effect_tokens), 1)
+        self.assertEqual(len(self.fx.evidence("narf.effect")), 1)
 
 
 if __name__ == "__main__":
