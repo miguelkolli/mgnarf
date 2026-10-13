@@ -1,4 +1,10 @@
-"""Release-specific ordered-chain regressions for the v1.70 candidate."""
+"""Release-specific ordered-chain regressions for the v1.70 candidate.
+
+These three cases are intentionally exposed to the v1.70 whole-chain workflow
+before its frozen protected-case count is raised from 10 to 13. That staged
+transition requires a measured count-mismatch RED before the release scope is
+refrozen; the product assertions themselves must remain green.
+"""
 
 from copy import deepcopy
 from pathlib import Path
