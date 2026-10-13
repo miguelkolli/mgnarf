@@ -19,7 +19,7 @@ from .gate import (
     canonical_json_digest,
     sha256_bytes,
 )
-from .provenance_execution import NARFGate
+from .provenance_admission import NARFGate
 from .stage_order_fenced import FencedOperationGate
 from .operation_guard import OperationBoundEffectExecutor, OperationBoundGate
 from .postgres_authority import PostgresConsumptionAuthority
