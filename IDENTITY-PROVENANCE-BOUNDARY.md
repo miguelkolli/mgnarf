@@ -1,6 +1,6 @@
 # Identity provenance and independence attestation boundary
 
-Status: **DESIGN FREEZE CANDIDATE — ADVERSARIAL REVISION 9 — NO RUNTIME CLAIM**
+Status: **DESIGN FREEZE CANDIDATE — ADVERSARIAL REVISION 10 — NO RUNTIME CLAIM**
 
 Related: #61
 
@@ -15,7 +15,8 @@ Revision history:
 - Revision 6: split pre-execution stage admission from post-execution completion.
 - Revision 7: preserve one-attempt-per-requirement-per-session semantics.
 - Revision 8: freeze acyclic `D1 -> producer result R -> D2 -> final NARF stage receipt E` construction.
-- Revision 9: make provenance an explicit frozen-contract semantic opt-in; C authenticates an already provenance-enabled contract and can never upgrade a legacy contract post hoc.
+- Revision 9: make provenance an explicit frozen-contract semantic opt-in.
+- Revision 10: unify existing identity-policy roles with provenance roles so one role cannot resolve to two different actor truths.
 
 ## 1. Security claim
 
@@ -48,7 +49,32 @@ Typical dimensions:
 
 If two aliases map to the same underlying boundary, they MUST resolve to the same canonical equivalence identifier. If the authority cannot establish equivalence, the result is `UNKNOWN`.
 
-## 3. Policy semantics
+## 3. Unified actor-role semantics
+
+MGnarf already has identity-policy roles such as:
+
+```text
+builder
+verifier:<id>
+authority
+```
+
+Provenance MUST use those same canonical role slots when the roles overlap. It MUST NOT create a parallel actor namespace for the same authorization.
+
+For every role present in both the existing identity policy and provenance authority state A:
+
+- the canonical role identifier MUST be identical;
+- overlapping actor fields MUST match exactly under canonical serialization, unless one explicitly frozen derivation rule defines their relation;
+- overlapping fields include at minimum `principal_id`, `trust_domain`, and `verifier_profile` when present in both schemas;
+- verifier bindings MUST match the same unified actor record;
+- authority-role attribution MUST use the same unified mapping;
+- ambiguous/missing role mapping is BLOCKED.
+
+A role alias MUST NOT bypass separation policy. If two aliases canonicalize to the same actor role/security identity, a policy that requires them to be separate fails rather than treating the aliases as independent.
+
+P MUST bind either one canonical combined identity/provenance actor-role commitment or both policy digests plus an authenticated coherence commitment that unambiguously joins them.
+
+## 4. Policy semantics
 
 Policy expresses pairwise separation over explicit dimensions, for example:
 
@@ -65,13 +91,13 @@ Policy expresses pairwise separation over explicit dimensions, for example:
 
 Different logical IDs never imply stronger separation automatically.
 
-## 4. Trust boundary
+## 5. Trust boundary
 
 Trusted provenance must originate outside candidate/verifier control through a configured host-owned or authenticated external authority path, such as an execution attester, host registry, credential mapping, or identity/provenance probe.
 
 The provenance authority/trust root is itself part of the trust model. MGnarf does not claim correctness beyond that configured trust root.
 
-## 5. Authenticated provenance and stage objects
+## 6. Authenticated provenance and stage objects
 
 The design uses the following object classes. None may silently substitute for another.
 
@@ -86,11 +112,12 @@ provenance_authority_id
 provenance_authority_trust_root_id
 provenance_schema_version
 provenance_revision
+canonical_actor_role_map
 canonical_actor_provenance_map
 provenance_map_digest
 ```
 
-A must have rollback-resistant currentness semantics sufficient for the deployment claim.
+A MUST use the same canonical role namespace as the identity policy when roles overlap. A must have rollback-resistant currentness semantics sufficient for the deployment claim.
 
 ### B — candidate-origin/build attestation
 
@@ -100,9 +127,9 @@ B binds:
 
 ```text
 candidate_sha256
-builder_role
+builder canonical role
 builder_actor_instance_id
-builder canonical provenance from A
+builder canonical identity/provenance from A
 A digest / provenance_map_digest
 provenance authority/root/revision
 build_attestation_id
@@ -120,21 +147,20 @@ P is an unambiguously stronger MGnarf contract semantic version and binds the se
 provenance semantics/evidence version
 provenance_required = true
 provenance_policy_sha256
+identity_policy_sha256 when identity policy is enabled
+actor_role_coherence_sha256 / combined actor-policy commitment
 A digest / provenance_map_digest
 provenance_authority_id
 provenance_authority_trust_root_id
 provenance_revision
 B digest when builder provenance is required
 all ordinary task/candidate/state/requirements/effect commitments
-identity policy commitments when enabled
 stage_order digest when enabled
 ```
 
 A and B exist before P, so P can commit to them without a dependency cycle.
 
-An older gate that does not understand P's stronger semantic version MUST reject P. It MUST NOT interpret P as a legacy identity-only or unordered contract.
-
-A legacy contract cannot be upgraded to provenance semantics after freeze by attaching later receipts.
+An older gate that does not understand P's stronger semantic version MUST reject P. A legacy contract cannot be upgraded to provenance semantics after freeze by attaching later receipts.
 
 ### C — contract-bound provenance binding
 
@@ -145,6 +171,7 @@ C authenticates the exact relationship between P and the pre-contract provenance
 ```text
 P contract_id / exact contract digest
 provenance_policy_sha256 from P
+identity/provenance actor-role coherence commitment from P
 A digest / provenance_map_digest exactly matching P
 provenance authority/root/revision exactly matching P
 B digest exactly matching P when required
@@ -168,8 +195,9 @@ C digest / provenance binding id
 P contract_id
 session_id
 requirement_id / authority-action id
-actor_role
+canonical actor_role
 actor_instance_id
+unified identity/provenance actor commitment
 canonical actor provenance from A
 A provenance revision/currentness observation
 stage-order predecessor context when enabled
@@ -182,7 +210,7 @@ D1 is host/attester-owned and created only after linearized admission succeeds.
 
 R is the canonical host representation of what the producer/action returned for this admitted invocation.
 
-For verifier stages, R binds the semantic equivalent of:
+For verifier stages, R binds:
 
 ```text
 status: PASS / FAIL / BLOCKED
@@ -204,7 +232,7 @@ D2 binds:
 ```text
 D1 id/digest
 same P/session/requirement/admission
-same actor instance
+same actor role + actor instance
 R digest
 execution-continuity result
 terminal completion metadata
@@ -216,11 +244,12 @@ D2 MUST NOT bind E's digest if E binds D2.
 
 E is the normal authenticated verification/action evidence object consumed by MGnarf evaluation and, when stage ordering is enabled, by predecessor-chain logic.
 
-E binds the semantic equivalent of:
+E binds:
 
 ```text
 all existing MGnarf requirement/verifier/task/state/effect fields
 P provenance semantic version / policy commitment
+unified actor-role/identity/provenance commitment
 status/reason/artifact fields from exact R
 C id/digest
 D1 id/digest
@@ -228,18 +257,16 @@ D2 id/digest
 stage-order predecessor fields when enabled
 ```
 
-E MUST match the same R that D2 authenticated. If D2 binds `R1` but E carries `R2` status/artifact/reason fields, E is invalid.
+E MUST match the same R that D2 authenticated. When ordered semantics are enabled, the authenticated predecessor chain references E, not raw D1/D2.
 
-When ordered semantics are enabled, the authenticated predecessor chain references E, not raw D1/D2.
-
-## 6. Acyclic construction graph
+## 7. Acyclic construction graph
 
 ```text
 A authority-state snapshot
   -> builder execution
   -> B candidate-origin attestation
   -> P provenance-enabled contract freeze
-       commits exact A + required B + provenance policy
+       commits exact A + required B + provenance/identity role coherence
   -> C exact P/A/B provenance binding
   -> D1 stage admission
   -> producer/action
@@ -255,7 +282,7 @@ A authority-state snapshot
 
 No object may depend on evidence that can only exist later in the graph.
 
-## 7. Contract activation and downgrade resistance
+## 8. Contract activation and downgrade resistance
 
 The contract is the semantic activation point.
 
@@ -263,16 +290,14 @@ Rules:
 
 - a provenance-enabled request MUST freeze as P, not as a legacy contract;
 - P MUST declare its stronger provenance semantic/evidence version;
-- P MUST commit the provenance policy and exact pre-contract A/B material required by that policy;
+- P MUST commit provenance policy, actor-role coherence, and exact pre-contract A/B material required by policy;
 - C MUST exactly confirm P's commitments;
 - missing C for P is BLOCKED before verifier execution;
 - C attached to a legacy contract cannot create a provenance claim;
 - an older/legacy gate MUST reject P rather than ignore provenance fields/version;
 - a wrapper that cannot preserve P semantics MUST reject before producer/effect execution.
 
-This prevents both silent downgrade and post-hoc security upgrades.
-
-## 8. Linearized stage admission
+## 9. Linearized stage admission
 
 Every provenance-dependent requirement has one host-owned admission linearization point before producer entry.
 
@@ -280,8 +305,10 @@ At that point the host atomically, or with equivalent single-winner reservation/
 
 ```text
 validates exact P + C consistency
+validates unified actor-role identity/provenance coherence
 validates current A authority/root/revision/currentness
 validates required separation for the actor/requirement
+validates verifier/authority binding against the same actor record
 validates actor-instance identity/provenance
 validates ordered predecessor E when enabled
 reserves exactly one D1 for this requirement in this session
@@ -292,15 +319,13 @@ Semantics:
 - provenance transition linearizes first -> D1 not created; producer not entered;
 - D1 reservation linearizes first under valid provenance -> producer runs once for that session requirement;
 - duplicate/re-entrant execute attempts for the same requirement/session -> rejected;
-- later provenance drift makes the resulting chain stale for later/final authorization according to currentness rules.
+- later provenance drift makes the resulting chain stale for later/final authorization.
 
 This MUST compose with existing ordered in-flight reservation and duplicate-requirement semantics, not replace them.
 
-## 9. Terminal completion and execution cardinality
+## 10. Terminal completion and execution cardinality
 
 Provenance MUST preserve the existing one-attempt-per-requirement-per-session model.
-
-For one admitted D1:
 
 ```text
 producer returns valid result -> R -> D2 -> E
@@ -315,12 +340,12 @@ Rules:
 - no second accepted D2/E for one D1;
 - FAIL/BLOCKED does not permit same-session retry;
 - producer exception does not permit same-session retry;
-- if a higher-level fresh-session retry is otherwise permitted, it uses fresh session+D1/D2/E and cannot reuse old stage provenance;
+- a higher-level fresh-session retry, where otherwise permitted, uses fresh session+D1/D2/E and cannot reuse old provenance evidence;
 - provenance itself introduces no retry capability.
 
-A hard host/process crash after D1 but before terminal E leaves no PASS evidence. Orphaned D1/R/D2 fragments cannot be promoted into a completed stage after restart unless an explicit authenticated recovery protocol is separately specified; absent that protocol they are unusable.
+A hard host/process crash after D1 but before terminal E leaves no PASS evidence. Orphaned D1/R/D2 fragments cannot be promoted into a completed stage after restart unless an explicit authenticated recovery protocol is separately specified.
 
-## 10. Attestation-to-execution continuity
+## 11. Attestation-to-execution continuity
 
 A deployment must guarantee either:
 
@@ -329,7 +354,7 @@ A deployment must guarantee either:
 
 A requirement admitted under one actor/security binding but completed under another is terminally BLOCKED/stale. Drift followed by restoration does not heal the invocation when monotonic revision semantics observed the transition.
 
-## 11. Stage-order composition
+## 12. Stage-order composition
 
 When authenticated stage ordering is enabled:
 
@@ -343,15 +368,15 @@ A FAIL/BLOCKED E consumes its requirement for the session and cannot be healed b
 
 Correct provenance cannot repair wrong order; correct order cannot repair failed provenance separation.
 
-## 12. Revision, revocation and drift
+## 13. Revision, revocation and drift
 
-Changes to actor mappings, canonical equivalence resolution, provenance authority/root, relevant authority configuration, revocation state, or accepted actor-instance binding must advance/invalidate provenance state in a rollback-resistant manner.
+Changes to actor mappings, canonical role resolution, canonical equivalence resolution, provenance authority/root, relevant authority configuration, revocation state, or accepted actor-instance binding must advance/invalidate provenance state in a rollback-resistant manner.
 
 If MGnarf monotonic authority revision is enabled, provenance state must be bound so the two mechanisms cannot silently disagree.
 
 Required currentness/revocation data unavailable -> BLOCKED.
 
-## 13. Final decision binding
+## 14. Final decision binding
 
 A provenance-enabled final decision MUST bind, directly or transitively through authenticated E stage receipts, to:
 
@@ -359,13 +384,14 @@ A provenance-enabled final decision MUST bind, directly or transitively through 
 P
 C
 required B
+unified actor-role coherence commitment
 all required accepted D1/R/D2/E stage chains
 final authenticated ordered E chain head when enabled
 ```
 
 Only a complete required PASS set is eligible for PASS. Stable-operation, authority-revision and fencing wrappers must preserve that exact stronger decision.
 
-## 14. Linearized effect admission
+## 15. Linearized effect admission
 
 The external effect boundary has one effect-admission linearization point.
 
@@ -373,6 +399,7 @@ At that point the trusted path atomically, or with equivalent compare-and-reserv
 
 ```text
 validates exact P / final decision / C relationship
+validates unified actor-role coherence commitment
 validates A authority id + trust root
 validates A provenance revision/currentness
 validates required provenance revocation/currentness
@@ -391,7 +418,7 @@ Semantics:
 
 The exact claim is: provenance is current at the linearized effect-admission point.
 
-## 15. No-silent-downgrade rule
+## 16. No-silent-downgrade rule
 
 Every provenance-enabled path must preserve/enforce provenance end-to-end or reject fail closed.
 
@@ -399,6 +426,8 @@ It MUST NOT:
 
 - freeze a provenance-enabled request as a legacy contract;
 - attach C to a legacy contract and advertise it as provenance-attested;
+- let identity policy and provenance A resolve the same role to different actor truths;
+- use role aliases to bypass separation;
 - strip provenance fields;
 - reinterpret P as legacy identity-only;
 - reduce canonical domain separation to label inequality;
@@ -413,19 +442,19 @@ It MUST NOT:
 - omit P/C/currentness checks in stable-operation/fencing/effect paths;
 - split currentness and admission reservation into unordered race-prone checks.
 
-## 16. Versioning
+## 17. Versioning
 
 Existing identity-only contracts retain existing semantics.
 
 P is an unambiguously stronger contract semantic version. A/B/C/D1/D2/E and R each require unambiguous schemas/versions as applicable. Older consumers that do not understand P MUST reject it, never ignore unknown fields and continue as legacy PASS.
 
-## 17. Claim strength / non-goals
+## 18. Claim strength / non-goals
 
 MGnarf may claim only the dimensions the configured authority model establishes. It does not automatically prove statistical, cognitive, organizational, geographic, vendor, or failure-mode independence.
 
 This boundary does not prove resistance to compromise of the trusted host/provenance root itself, nor revoke an already-admitted external effect when the target cannot roll it back.
 
-## 18. Required adversarial coverage
+## 19. Required adversarial coverage
 
 Before runtime provenance support can be called PASS, tests must cover at minimum:
 
@@ -435,46 +464,51 @@ Before runtime provenance support can be called PASS, tests must cover at minimu
 4. replay across session/contract/candidate/policy/revision -> BLOCKED;
 5. wrong/replaced provenance authority/root -> BLOCKED;
 6. mix actor fields from different A snapshots -> BLOCKED;
-7. builder provenance required but B absent -> BLOCKED;
-8. B for wrong candidate/A/revision -> BLOCKED;
-9. provenance-enabled request frozen as legacy contract then C attached -> no provenance claim/BLOCKED;
-10. legacy gate receives P -> rejected, never legacy PASS;
-11. P commits A1/B1 but C binds A2/B1 or A1/B2 -> BLOCKED;
-12. P requires C but C missing -> BLOCKED before stage admission;
-13. valid A/B -> P -> exact C -> eligible for stage admission;
-14. legacy contract without provenance opt-in cannot later be advertised as provenance-attested;
-15. correct static actor record but actual stage actor instance differs -> BLOCKED;
-16. D1 absent, D2/E appears -> BLOCKED;
-17. D2 from requirement/session X attached to D1 Y -> BLOCKED;
-18. D2 binds R1 but E carries R2 status/artifact/reason -> BLOCKED;
-19. valid D2 from one D1 plus E from another D1 -> BLOCKED;
-20. ordered predecessor references D2 instead of required E -> BLOCKED;
-21. producer exception after D1 -> canonical BLOCKED R -> D2 -> E; second same-session D1 rejected;
-22. FAIL/BLOCKED E then same-session retry attempt -> rejected;
-23. fresh-session retry, where otherwise permitted, uses fresh session+D1/D2/E and cannot reuse old evidence;
-24. orphaned D1/R/D2 after hard crash -> never PASS and cannot be spliced into fresh session;
-25. duplicate D2/E race for one D1 -> at most one accepted terminal stage receipt;
-26. provenance changes after D1 before E -> terminal stage cannot reach later/final authorization under stale provenance;
-27. provenance transition races D1 and transition linearizes first -> producer not entered;
-28. D1 linearizes first, provenance changes later -> chain stale before later/final authorization;
-29. authenticated stage order wrong despite correct provenance -> BLOCKED;
-30. provenance separation wrong despite correct stage order -> BLOCKED;
-31. FAIL/BLOCKED predecessor E cannot be healed by same-session re-execution;
-32. wrapper strips/downgrades provenance -> BLOCKED;
-33. final decision missing required P/B/C/D1/R/D2/E binding -> BLOCKED;
-34. provenance changes after final decision/fence but before effect admission -> BLOCKED;
-35. provenance drift/restore before effect -> old authorization stale when transition observed;
-36. authority/root replacement before effect -> BLOCKED;
-37. currentness/revocation unavailable at effect admission -> BLOCKED;
-38. provenance transition races effect admission and transition wins -> BLOCKED;
-39. effect admission wins under valid provenance then provenance changes -> no second effect; admitted effect not retroactively reclassified;
-40. concurrent duplicate effects -> at most one admission;
-41. exact D1 -> R -> D2 -> E construction is acyclic and internally consistent;
-42. exact A -> B -> P -> C -> D1 -> R -> D2 -> E sequence -> eligible only if all existing MGnarf checks pass;
-43. provenance path preserves existing duplicate-requirement and ordered-PASS-prefix semantics;
-44. full existing regression suite remains green and legacy semantics remain unchanged.
+7. identity policy and A disagree on `principal_id` for same role -> BLOCKED;
+8. identity policy and A disagree on overlapping trust-domain/profile facts -> BLOCKED;
+9. role aliases attempt to bypass separation -> canonicalized same role/security identity and BLOCKED when separation required;
+10. verifier binding matches identity policy but not A, or A but not identity policy -> BLOCKED;
+11. valid unified actor-role mapping -> eligible for further checks;
+12. builder provenance required but B absent -> BLOCKED;
+13. B for wrong candidate/A/revision -> BLOCKED;
+14. provenance-enabled request frozen as legacy contract then C attached -> no provenance claim/BLOCKED;
+15. legacy gate receives P -> rejected, never legacy PASS;
+16. P commits A1/B1 but C binds A2/B1 or A1/B2 -> BLOCKED;
+17. P requires C but C missing -> BLOCKED before stage admission;
+18. valid A/B -> P -> exact C -> eligible for stage admission;
+19. legacy contract without provenance opt-in cannot later be advertised as provenance-attested;
+20. correct static actor record but actual stage actor instance differs -> BLOCKED;
+21. D1 absent, D2/E appears -> BLOCKED;
+22. D2 from requirement/session X attached to D1 Y -> BLOCKED;
+23. D2 binds R1 but E carries R2 status/artifact/reason -> BLOCKED;
+24. valid D2 from one D1 plus E from another D1 -> BLOCKED;
+25. ordered predecessor references D2 instead of required E -> BLOCKED;
+26. producer exception after D1 -> canonical BLOCKED R -> D2 -> E; second same-session D1 rejected;
+27. FAIL/BLOCKED E then same-session retry attempt -> rejected;
+28. fresh-session retry, where otherwise permitted, uses fresh session+D1/D2/E and cannot reuse old evidence;
+29. orphaned D1/R/D2 after hard crash -> never PASS and cannot be spliced into fresh session;
+30. duplicate D2/E race for one D1 -> at most one accepted terminal stage receipt;
+31. provenance changes after D1 before E -> terminal stage cannot reach later/final authorization under stale provenance;
+32. provenance transition races D1 and transition linearizes first -> producer not entered;
+33. D1 linearizes first, provenance changes later -> chain stale before later/final authorization;
+34. authenticated stage order wrong despite correct provenance -> BLOCKED;
+35. provenance separation wrong despite correct stage order -> BLOCKED;
+36. FAIL/BLOCKED predecessor E cannot be healed by same-session re-execution;
+37. wrapper strips/downgrades provenance or actor-role coherence -> BLOCKED;
+38. final decision missing required P/B/C/D1/R/D2/E/coherence binding -> BLOCKED;
+39. provenance changes after final decision/fence but before effect admission -> BLOCKED;
+40. provenance drift/restore before effect -> old authorization stale when transition observed;
+41. authority/root replacement before effect -> BLOCKED;
+42. currentness/revocation unavailable at effect admission -> BLOCKED;
+43. provenance transition races effect admission and transition wins -> BLOCKED;
+44. effect admission wins under valid provenance then provenance changes -> no second effect; admitted effect not retroactively reclassified;
+45. concurrent duplicate effects -> at most one admission;
+46. exact D1 -> R -> D2 -> E construction is acyclic and internally consistent;
+47. exact A -> B -> P -> C -> D1 -> R -> D2 -> E sequence -> eligible only if all existing MGnarf checks pass;
+48. provenance path preserves existing duplicate-requirement and ordered-PASS-prefix semantics;
+49. full existing regression suite remains green and legacy semantics remain unchanged.
 
-## 19. Implementation gate
+## 20. Implementation gate
 
 No runtime change should begin until this boundary is deliberately reviewed and accepted or amended.
 
@@ -485,11 +519,12 @@ recon exact current main + stage-order candidate semantics
   -> design/adversarial freeze
   -> tests first / RED
   -> smallest implementation
+  -> unified actor-role/coherence tests
   -> P contract opt-in / legacy-rejection tests
   -> canonical equivalence tests
   -> A authority/root/rollback tests
   -> B candidate-origin tests
-  -> C exact P/A/B binding tests
+  -> C exact P/A/B/coherence binding tests
   -> D1 admission linearization tests
   -> R canonical-result tests
   -> D2 completion/continuity tests
