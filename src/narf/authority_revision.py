@@ -9,6 +9,10 @@ Ordering-enabled contracts preserve their authenticated v3 stage-order binding
 through this wrapper. The authority-revision receipt is versioned separately so
 legacy v2 identity contracts keep their historical binding schema while ordered
 v3 contracts additionally bind the frozen stage-order digest.
+
+Provenance-v4 composition is intentionally not implemented here yet. A caller
+that explicitly requests provenance semantics is rejected before contract or
+binding evidence is created rather than being silently downgraded to v2/v3.
 """
 from __future__ import annotations
 
@@ -126,6 +130,14 @@ class AuthorityRevisionGate:
         self.__gate = NARFGate(receipt_store)
         self.__authority_probe = authority_probe
 
+    @staticmethod
+    def _reject_provenance_request(
+        provenance_policy: dict | None,
+        provenance_snapshot: dict | None,
+    ) -> None:
+        if provenance_policy is not None or provenance_snapshot is not None:
+            raise NARFError("provenance: authority-revision wrapper unsupported")
+
     def _probe(self) -> AuthoritySnapshot:
         try:
             value = self.__authority_probe()
@@ -149,7 +161,10 @@ class AuthorityRevisionGate:
         state,
         identity_policy: dict,
         stage_order: list[str] | None = None,
+        provenance_policy: dict | None = None,
+        provenance_snapshot: dict | None = None,
     ) -> str:
+        self._reject_provenance_request(provenance_policy, provenance_snapshot)
         if type(identity_policy) is not dict or type(identity_policy.get("actors")) is not dict:
             raise NARFError("authority: identity policy with actors required")
 
@@ -276,7 +291,17 @@ class AuthorityRevisionGate:
         effect_binding,
         state_probe,
         revocation_probe=None,
+        provenance_probe=None,
+        execution_probe=None,
+        provenance_admission_authority=None,
     ) -> AuthorityRevisionSession:
+        if (
+            provenance_probe is not None
+            or execution_probe is not None
+            or provenance_admission_authority is not None
+        ):
+            raise NARFError("provenance: authority-revision wrapper unsupported")
+
         binding, _contract = self._load_binding(contract_id)
         self._require_current(binding)
 
