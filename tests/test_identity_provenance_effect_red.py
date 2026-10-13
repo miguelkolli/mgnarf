@@ -70,9 +70,11 @@ class MemoryProvenanceAdmissionAuthority:
         *,
         expected_snapshot_sha256,
         expected_revision,
+        admission_check,
     ):
         with self.lock:
             self._require_current(expected_snapshot_sha256, expected_revision)
+            admission_check()
             if token in self.effect_tokens:
                 raise NARFError("provenance: effect admission already consumed")
             self.effect_tokens.add(token)
