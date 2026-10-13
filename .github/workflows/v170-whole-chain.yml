@@ -79,11 +79,43 @@ jobs:
           raise SystemExit(0 if passed else 1)
           PY
 
-      - name: Compile release whole-chain regression
-        run: >-
-          python3 -m compileall -q
-          tests/test_v170_whole_chain.py
-          tests/test_v170_stage_order_release.py
+      - name: Run exact full repository regression
+        shell: bash
+        run: |
+          python3 - <<'PY' 2>&1 | tee "$CI_EVIDENCE/full-unittest.log"
+          import json, os, subprocess, unittest
+          from pathlib import Path
+
+          evidence = Path(os.environ["CI_EVIDENCE"])
+          suite = unittest.defaultTestLoader.discover("tests")
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          actual_sha = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], text=True
+          ).strip()
+          expected_sha = os.environ["EXPECTED_SHA"]
+          passed = (
+              actual_sha == expected_sha
+              and result.testsRun == 237
+              and len(result.failures) == 0
+              and len(result.errors) == 0
+              and len(result.skipped) == 0
+          )
+          summary = {
+              "commit": actual_sha,
+              "expected_commit": expected_sha,
+              "tests": result.testsRun,
+              "failures": len(result.failures),
+              "errors": len(result.errors),
+              "skips": len(result.skipped),
+              "result": "PASS" if passed else "FAIL",
+          }
+          (evidence / "full-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+          print(json.dumps(summary, indent=2))
+          raise SystemExit(0 if passed else 1)
+          PY
+
+      - name: Compile exact repository candidate
+        run: python3 -m compileall -q src tests tools
 
       - name: Preserve v1.70 whole-chain evidence
         if: always()
