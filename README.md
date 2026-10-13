@@ -4,27 +4,23 @@
 
 MGnarf is a fail-closed execution gate for AI-assisted and automated work. It sits between verified work and the real effect that changes the outside world.
 
-If you are new here, use this page as the repository front door: choose what you want to do and follow that route.
+If an AI agent writes code, prepares a database change, proposes an API mutation, or asks to deploy something, MGnarf does not treat “the checks looked good earlier” as permanent permission. It binds evidence to the exact frozen candidate and revalidates the authorization before the protected effect.
 
-## Quick routes
+## Start here
 
-| I want to... | Start here |
+| I want to... | Read |
 | --- | --- |
 | understand MGnarf in plain English | [OVERVIEW.md](OVERVIEW.md) |
-| see where MGnarf belongs in my stack | [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md) |
-| choose between core, identity, operation-bound and fenced paths | [HARDENED-PATHS.md](HARDENED-PATHS.md) |
-| inspect the measured PostgreSQL commit-time fencing reference | [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md) |
+| see where it belongs in a real stack | [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md) |
+| choose a hardened execution path | [HARDENED-PATHS.md](HARDENED-PATHS.md) |
+| understand authenticated verifier/authority ordering | [STAGE-ORDER-BOUNDARY.md](STAGE-ORDER-BOUNDARY.md) |
+| inspect the measured PostgreSQL commit-time reference | [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md) |
 | integrate a real protected effect | [HOST-CONTRACT.md](HOST-CONTRACT.md) |
-| understand the trust model and architecture | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| read the normative behavior | [NARF-SPEC.md](NARF-SPEC.md) |
+| inspect the behavioral specification | [NARF-SPEC.md](NARF-SPEC.md) |
+| inspect architecture and trust boundaries | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | inspect the current stable release | [RELEASE-v1.61.md](RELEASE-v1.61.md) |
 | inspect current stable evidence | [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md) |
-| audit historical adversarial findings | [TRUST-BOUNDARY-AUDIT-v1.60.md](TRUST-BOUNDARY-AUDIT-v1.60.md) |
-| understand rollback / replay limits | [ROLLBACK-BOUNDARY.md](ROLLBACK-BOUNDARY.md) |
-| inspect the Python implementation | [src/narf/](src/narf/) |
-| inspect regression tests | [tests/](tests/) |
-| inspect adversarial / boundary harnesses | [tools/](tools/) |
-| inspect CI and release gates | [.github/workflows/](.github/workflows/) |
+| inspect the v1.70 candidate scope/evidence | [RELEASE-v1.70.md](RELEASE-v1.70.md) / [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md) |
 
 ## Where MGnarf sits
 
@@ -46,146 +42,147 @@ real effect
 
 The credential that can perform the protected effect belongs on the trusted-host side. If an agent can bypass the gate and call the deploy, API, database, publication or device path directly, the gate cannot protect that path.
 
-## Which protection level?
+## The core idea
 
-MGnarf has stronger opt-in paths for stronger threat models. They do not all prove the same thing.
+MGnarf separates **evidence** from **effect authority**.
 
-| Need | Reference path |
-| --- | --- |
-| exact candidate/task/policy binding + required verifier evidence + one local effect admission | `NARFGate` |
-| builder/verifier/authority separation | identity-enabled `NARFGate` |
-| monotonic identity-authority generation | `AuthorityRevisionGate` |
-| stable real-world operation identity across fresh contracts | `OperationBoundGate(..., authority_probe=...)` |
-| bind and transport a fence into the effect adapter | `FencedOperationGate` |
-| validate authority/fence state at the measured external commit boundary | PostgreSQL Layer C reference |
+A typical protected path is:
 
-See **[HARDENED-PATHS.md](HARDENED-PATHS.md)** for the decision guide, trust assumptions and retained limits.
+```text
+freeze exact task/candidate/policy
+        -> run required host-bound verifiers
+        -> authenticate evidence
+        -> revalidate current authority/state
+        -> authenticated PASS decision
+        -> single-use guarded effect
+```
 
-The strongest current PostgreSQL reference does **not** mean MGnarf universally eliminates TOCTOU for arbitrary external systems. Its stronger claim is limited to the tested PostgreSQL function/transaction/role configuration described in [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md).
+For stronger threat models, MGnarf exposes additional opt-in boundaries instead of pretending that one local PASS proves every remote execution property.
 
-## Contents
+## Protection levels
 
-- [Start here](#start-here)
-- [Integration and trusted-host boundaries](#integration-and-trusted-host-boundaries)
-- [Specification and architecture](#specification-and-architecture)
-- [Authority, identity, replay and fenced-effect boundaries](#authority-identity-replay-and-fenced-effect-boundaries)
-- [Current stable release](#current-stable-release)
-- [Historical releases and acceptance evidence](#historical-releases-and-acceptance-evidence)
-- [Source code](#source-code)
-- [Tests](#tests)
-- [Tools and adversarial fixtures](#tools-and-adversarial-fixtures)
-- [CI and release workflows](#ci-and-release-workflows)
-- [Legal and attribution](#legal-and-attribution)
+| Need | Reference path | What it adds |
+| --- | --- | --- |
+| exact task/candidate/policy + required evidence + one local effect admission | `NARFGate` | frozen bindings, N/N evidence, authenticated receipts, revalidation |
+| builder/verifier/authority separation | identity-enabled `NARFGate` | host-authenticated principal, trust domain, optional verifier profile |
+| require verifier/authority stages in authenticated causal order | `NARFGate(..., stage_order=...)` | evidence-v3 requirement ordering, predecessor receipt chain, final chain-head binding |
+| monotonic identity-authority generation | `AuthorityRevisionGate` | trusted-host revision bound to the authorization |
+| stable real-world operation identity across fresh contracts | `OperationBoundGate(..., authority_probe=...)` | host-owned semantic operation UUID and external single-use authority |
+| transport a bound fence into the effect adapter | `FencedOperationGate` + `FencedOperationEffectExecutor` | scope/revision/fence binding and downgrade/direct-route guards |
+| validate authority/fence state at the measured external commit | PostgreSQL Layer C reference | DB-owned serialized authority/fence/effect commit boundary |
 
-## Start here
+These are cumulative security ideas, not marketing tiers. A stronger path adds conditions; it does not erase the obligations of the layers below it.
 
-- [OVERVIEW.md](OVERVIEW.md) — plain-English overview, current stable status, core rule, measured boundary and trust model.
-- [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md) — stack-oriented guide showing where MGnarf goes before deploys, database writes, API mutations, file publication and device commands.
-- [HARDENED-PATHS.md](HARDENED-PATHS.md) — choose between the core, identity/revision, stable-operation, fenced-transport and measured PostgreSQL commit paths.
-- [HOST-CONTRACT.md](HOST-CONTRACT.md) — obligations of the integrating trusted host: serialization, immutable effect input, receipt/key protection and failure handling.
-- [REFERENCE-HOST.md](REFERENCE-HOST.md) — concrete trusted-host filesystem-effect example.
-- [PROCESS-BOUNDARY.md](PROCESS-BOUNDARY.md) — trusted-host / untrusted-worker process boundary example and limits.
+### Authenticated stage ordering
 
-## Integration and trusted-host boundaries
+Stage ordering is separate from identity independence.
 
-- [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md) — choose-your-stack placement guide and integration checklist.
-- [HARDENED-PATHS.md](HARDENED-PATHS.md) — layered protection guide for stronger execution boundaries.
-- [HOST-CONTRACT.md](HOST-CONTRACT.md) — authority-lock / transaction requirements and host responsibilities.
-- [REFERENCE-HOST.md](REFERENCE-HOST.md) — single-process trusted-host reference integration.
-- [PROCESS-BOUNDARY.md](PROCESS-BOUNDARY.md) — process separation and credential-boundary example.
-- [CODEX-UNIX-TESTS.md](CODEX-UNIX-TESTS.md) — Unix isolation test plan/evidence context.
-- [CRASH-BOUNDARY.md](CRASH-BOUNDARY.md) — crash-window and persistence boundary.
+Identity answers:
 
-## Specification and architecture
+```text
+who produced this evidence?
+```
 
-- [NARF-SPEC.md](NARF-SPEC.md) — behavioral specification.
-- [ARCHITECTURE.md](ARCHITECTURE.md) — reference architecture, components and invariants.
-- [INDEPENDENCE.md](INDEPENDENCE.md) — standalone/dependency boundary; MGnarf does not require a parent framework.
+Stage ordering answers:
 
-## Authority, identity, replay and fenced-effect boundaries
+```text
+which authenticated predecessor had to exist before this stage could run?
+```
 
-- [IDENTITY-BOUNDARY.md](IDENTITY-BOUNDARY.md) — host-authenticated principal/trust-domain/verifier-profile separation and sticky stale semantics.
-- [AUTHORITY-REVISION.md](AUTHORITY-REVISION.md) — monotonic authority revision for identity change-and-restore visibility.
-- [OPERATION-IDEMPOTENCY.md](OPERATION-IDEMPOTENCY.md) — semantic operation identity and stable operation-bound authority.
-- [COMPOSED-OPERATION-PATH.md](COMPOSED-OPERATION-PATH.md) — composition of identity/revision checks with stable operation binding.
-- [FENCED-EFFECT-BOUNDARY.md](FENCED-EFFECT-BOUNDARY.md) — explicit fence-scope / fence-token design and external-enforcement acceptance rules.
-- [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md) — measured PostgreSQL function-enforced commit-time fencing reference and its privileged rollback limit.
-- [POSTGRES-AUTHORITY.md](POSTGRES-AUTHORITY.md) — PostgreSQL single-use consumption authority and its measured limits.
-- [SIGNED-WITNESS.md](SIGNED-WITNESS.md) — signed-witness authority, response validation and measured network boundary.
-- [ROLLBACK-BOUNDARY.md](ROLLBACK-BOUNDARY.md) — what the filesystem receipt history does and does not protect against.
-- [ROLLBACK-HARDENING.md](ROLLBACK-HARDENING.md) — stronger single-use consumption authority patterns.
-- [MULTIDOMAIN-FENCING.md](MULTIDOMAIN-FENCING.md) — combining independent authority domains and the retained whole-authority rollback limit.
+An ordered first-version chain can be:
 
-## Current stable release
+```text
+frozen builder/candidate context
+  -> tests requirement
+  -> independent security requirement
+  -> authority requirement
+  -> MGnarf PASS decision
+  -> guarded effect
+```
 
-The current stable release is **v1.61**.
+The order is frozen by exact `requirement_id`. The first stage binds to a session/contract-owned chain seed; each later stage binds to the authenticated predecessor receipt ID and canonical digest. A future stage is rejected before its producer runs. The final decision binds to the final authenticated chain head.
 
-- [RELEASE-v1.61.md](RELEASE-v1.61.md) — immutable v1.61 release scope, acceptance gate and retained boundaries.
-- [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md) — v1.61 reproduced finding, deadline hardening and exact repository evidence.
-- [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md) — release preparation / verification checklist.
+This is **not** a physical wall-clock proof, a claim of verifier epistemic independence, or distributed consensus. See [STAGE-ORDER-BOUNDARY.md](STAGE-ORDER-BOUNDARY.md).
 
-The GitHub release/tag is the immutable release artifact. `main` may continue to receive documentation or later development without moving an immutable historical tag.
+## Current release status
 
-**Important:** identity/revision/fenced-effect/PostgreSQL Layer C work present on current `main` after the v1.61 tag is later development. It is not retroactively part of the immutable v1.61 release unless a later release explicitly freezes and accepts it.
+The current published stable release is **v1.61**.
 
-## Historical releases and acceptance evidence
+- [RELEASE-v1.61.md](RELEASE-v1.61.md)
+- [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md)
 
-### v1.60 stable line
+The repository also contains a **v1.70 candidate line** with newer hardened execution work, including identity/revision composition, stable operation identity, fenced effects, the PostgreSQL Layer C reference, and authenticated stage ordering. Candidate evidence is not a stable release claim.
 
-- [RELEASE-v1.60.md](RELEASE-v1.60.md) — immutable v1.60 stable release scope.
-- [STABLE-READINESS-v1.60.md](STABLE-READINESS-v1.60.md) — stable-readiness review and retained limits.
-- [TEST-REPORT-v1.60-stable-adversarial.md](TEST-REPORT-v1.60-stable-adversarial.md) — adversarial stable retest evidence.
-- [TRUST-BOUNDARY-AUDIT-v1.60.md](TRUST-BOUNDARY-AUDIT-v1.60.md) — whole-chain trust-boundary audit.
-- [RELEASE-v1.60-rc2.md](RELEASE-v1.60-rc2.md) — RC2 hardening release evidence.
-- [RELEASE-v1.60-rc1.md](RELEASE-v1.60-rc1.md) — RC1 release evidence.
-- [TEST-REPORT-v1.60-rc1-redteam.md](TEST-REPORT-v1.60-rc1-redteam.md) — blind red-team findings and regression evidence after RC1.
-- [RELEASE-v1.60-beta.1.md](RELEASE-v1.60-beta.1.md) — first v1.60 beta prerelease.
-- [BETA-ACCEPTANCE.md](BETA-ACCEPTANCE.md) — historical beta promotion gate.
+- [RELEASE-v1.70.md](RELEASE-v1.70.md)
+- [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md)
 
-### Earlier history
+`v1.70` must not be tagged or published until its release freeze is merged deliberately and the exact resulting `main` SHA receives fresh push-triggered release evidence.
 
-- [RELEASE-v1.50.md](RELEASE-v1.50.md) — earlier stable milestone notes.
-- [TEST-REPORT.md](TEST-REPORT.md) — accumulated historical test evidence and limitations.
+Historical release documents remain immutable evidence of what was measured at that time. New development does not retroactively change v1.61.
 
-Historical documents are evidence of the state that was measured at that time. They should not be silently rewritten to describe a newer release.
+## Trust boundary
 
-## Source code
+The trusted host owns at least:
 
-The public Python reference implementation lives in [src/narf/](src/narf/).
+- receipt key and receipt-store authority;
+- frozen task/candidate/state/requirements/policy/effect bindings;
+- verifier selection and execution;
+- identity/profile provenance when configured;
+- `stage_order` and chain admission when configured;
+- state and revocation probes;
+- semantic `operation_id` when configured;
+- external consumption/fencing authority when configured;
+- the real effect credential and callback/adapter.
 
-- [src/narf/gate.py](src/narf/gate.py) — core fail-closed gate, frozen contracts, verifier evidence, decisions, receipts and effect execution.
-- [src/narf/authority_revision.py](src/narf/authority_revision.py) — identity-enabled monotonic authority-revision wrapper.
-- [src/narf/operation_guard.py](src/narf/operation_guard.py) — stable operation-bound execution helpers and composed revision path.
-- [src/narf/fenced_effect.py](src/narf/fenced_effect.py) — fenced-operation contracts, fence transport and fail-closed executor route.
-- [src/narf/rollback_guard.py](src/narf/rollback_guard.py) — consumption authorities and rollback-hardened effect execution.
-- [src/narf/postgres_authority.py](src/narf/postgres_authority.py) — PostgreSQL-backed single-use consumption authority.
-- [src/narf/postgres_fencing.py](src/narf/postgres_fencing.py) — PostgreSQL Layer C fencing authority/control/target adapters.
-- [src/narf/signed_witness.py](src/narf/signed_witness.py) — signed-witness consumption authority and response deadline handling.
-- [src/narf/reference_host.py](src/narf/reference_host.py) — reference trusted-host filesystem effect integration.
-- [src/narf/process_host.py](src/narf/process_host.py) — trusted-host / untrusted-worker process integration fixture.
-- [src/narf/__init__.py](src/narf/__init__.py) — public reference API exports.
+Candidate/worker output is not trusted host evidence. Python attribute privacy is not a security boundary. If untrusted code can access host secrets or call the effect directly, use an enforced process/OS/sandbox/service boundary appropriate to the threat model.
 
-The PostgreSQL Layer C database functions live in [sql/postgres_fencing_v1.sql](sql/postgres_fencing_v1.sql).
+## Important retained limits
 
-## Tests
+MGnarf does not claim:
 
-The unit/regression suite lives in [tests/](tests/).
+- that verifier logic is correct;
+- that differently named agents/models are genuinely independent in the real world;
+- physical wall-clock chronology from stage ordering;
+- distributed consensus across arbitrary hosts;
+- universal TOCTOU elimination for arbitrary remote systems;
+- exactly-once remote completion after ambiguous acknowledgement or callback failure;
+- rollback resistance if every preserving authority history is rolled back together;
+- protection from a malicious trusted host that deliberately bypasses the hardened path;
+- independent external security certification.
 
-Major areas covered there include:
+The strongest current PostgreSQL claim is specific to the tested function/transaction/role configuration in [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md). A green limitation witness means the documented limitation reproduced as expected; it does not turn that limitation into a security guarantee.
 
-- core gate and requirement binding;
-- canonical JSON and receipt validation;
-- trusted-host serialization;
-- identity / trust-domain / verifier-profile separation;
-- monotonic authority revision and stale authorization behavior;
-- process / worker boundaries;
-- reference-host behavior;
-- rollback and operation-bound authority;
-- fenced-effect transport and downgrade/direct-route protection;
-- PostgreSQL consumption and fenced-target configuration;
-- signed-witness configuration;
-- crash/store durability;
-- red-team and stable-adversarial regressions.
+## Integration and boundary documents
+
+- [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md) — placement in real stacks.
+- [HOST-CONTRACT.md](HOST-CONTRACT.md) — trusted-host serialization, immutable input and persistence obligations.
+- [IDENTITY-BOUNDARY.md](IDENTITY-BOUNDARY.md) — principal/trust-domain/profile separation.
+- [STAGE-ORDER-BOUNDARY.md](STAGE-ORDER-BOUNDARY.md) — authenticated causal requirement ordering.
+- [AUTHORITY-REVISION.md](AUTHORITY-REVISION.md) — monotonic authority generation.
+- [OPERATION-IDEMPOTENCY.md](OPERATION-IDEMPOTENCY.md) — semantic operation identity.
+- [COMPOSED-OPERATION-PATH.md](COMPOSED-OPERATION-PATH.md) — identity/revision + stable-operation composition.
+- [FENCED-EFFECT-BOUNDARY.md](FENCED-EFFECT-BOUNDARY.md) — fence transport boundary.
+- [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md) — measured PostgreSQL Layer C commit boundary.
+- [SIGNED-WITNESS.md](SIGNED-WITNESS.md) — signed-witness authority.
+- [ROLLBACK-BOUNDARY.md](ROLLBACK-BOUNDARY.md), [ROLLBACK-HARDENING.md](ROLLBACK-HARDENING.md), [MULTIDOMAIN-FENCING.md](MULTIDOMAIN-FENCING.md) — rollback/replay boundaries.
+
+## Source map
+
+The Python reference implementation lives in [src/narf/](src/narf/).
+
+- `gate.py` — legacy core gate/session primitives and receipt/effect mechanics.
+- `stage_order.py` — public `NARFGate`, legacy delegation plus ordered evidence-v3 semantics.
+- `authority_revision.py` — monotonic authority-revision wrapper.
+- `operation_guard.py` — stable operation binding and composed authority path.
+- `stage_order_fenced.py` — ordered public fenced-operation gate.
+- `fenced_effect.py` — fenced session/token/effect executor primitives.
+- `postgres_authority.py` — PostgreSQL single-use consumption authority.
+- `postgres_fencing.py` — PostgreSQL Layer C adapters.
+- `signed_witness.py` — signed-witness authority and response deadline handling.
+- `reference_host.py` / `process_host.py` — trusted-host reference integrations.
+- `__init__.py` — public API exports.
+
+## Tests and CI
 
 Run the repository suite with:
 
@@ -194,66 +191,22 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 python3 -m compileall -q src tests tools
 ```
 
-## Tools and adversarial fixtures
+Stage-order regressions include core ordering, composition/downgrade, same-thread re-entrancy, independent adversarial replay/tamper coverage, and v1.70 release-specific ordered whole-chain cases.
 
-Boundary and fault-injection harnesses live in [tools/](tools/).
-
-They include fixtures for:
-
-- Unix UID/GID isolation;
-- trusted-host process separation;
-- crash persistence;
-- canonical binding fuzzing;
-- rollback and rollback hardening;
-- multi-domain fencing;
-- PostgreSQL single-use authority;
-- PostgreSQL function-enforced fenced target / commit-time race boundary;
-- signed-witness behavior;
-- operation idempotency and concurrent operation races;
-- ambiguous durable-reservation outcomes;
-- strict reference-host task coercion.
-
-`tools/signed_witness_server.py` is the reference signed-witness service used by the measured witness fixtures.
-
-## CI and release workflows
-
-GitHub Actions live in [.github/workflows/](.github/workflows/).
-
-### Boundary / regression workflows
-
-- `reference-tests.yml` — aggregate required reference checks.
-- `canonical-binding-fuzz.yml` — canonical binding / receipt fuzz boundary.
-- `reference-host-strict-task.yml` — strict trusted-host task boundary.
-- `rollback-witness.yml` — documented rollback limitation witness.
-- `rollback-hardening.yml` — rollback-hardening boundary.
-- `multidomain-fencing.yml` — multi-domain authority boundary.
-- `postgres-authority.yml` — PostgreSQL single-use authority boundary.
-- `postgres-fenced-target.yml` — PostgreSQL function-enforced commit-time fencing boundary.
-- `signed-witness.yml` — signed-witness authority boundary.
-- `operation-bound-authority.yml` — operation-bound authority checks.
-- `operation-idempotency-witness.yml` — stable operation identity / replay checks.
-- `ambiguous-authority.yml` — ambiguous durable-reservation fault boundary.
-
-### Historical / stable release workflows
-
-- `beta-release.yml` — historical beta release workflow.
-- `rc-release.yml` — historical RC1 release workflow.
-- `rc2-release.yml` — historical RC2 release workflow.
-- `stable-release.yml` — v1.60 stable release verification workflow.
-- `stable-release-v1.61.yml` — v1.61 stable release verification workflow.
-
-A green workflow only supports the boundary that workflow actually measures. Limitation-witness success means the documented limitation reproduced as expected; it does not turn that limitation into a security guarantee.
+GitHub Actions live in [.github/workflows/](.github/workflows/). A green workflow supports only the boundary it actually measures. Release claims are tied to explicit candidate SHAs and must be re-run after candidate changes.
 
 ## Legal and attribution
 
 - [LICENSE](LICENSE) — Apache License 2.0.
 - [NOTICE](NOTICE) — required project attribution.
-- [TRADEMARKS.md](TRADEMARKS.md) — naming and official-project branding boundary.
+- [TRADEMARKS.md](TRADEMARKS.md) — naming/official-project boundary.
+
+Redistributions and derivative works must preserve the applicable attribution from `NOTICE`:
+
+```text
+This software includes software originally developed as MGNARF Ändi.
+```
 
 ---
 
-### Shortest useful reading path
-
-**[OVERVIEW](OVERVIEW.md) → [INTEGRATION-GUIDE](INTEGRATION-GUIDE.md) → [HARDENED-PATHS](HARDENED-PATHS.md) → [HOST-CONTRACT](HOST-CONTRACT.md)**
-
-For the immutable stable-release evidence, continue to **[RELEASE-v1.61](RELEASE-v1.61.md) → [TEST-REPORT-v1.61](TEST-REPORT-v1.61.md)**.
+**Shortest useful reading path:** [OVERVIEW](OVERVIEW.md) -> [INTEGRATION-GUIDE](INTEGRATION-GUIDE.md) -> [HARDENED-PATHS](HARDENED-PATHS.md) -> [HOST-CONTRACT](HOST-CONTRACT.md)
