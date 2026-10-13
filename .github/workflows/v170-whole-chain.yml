@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   whole-chain:
-    name: v1.70 whole-chain adversarial (10 protected cases)
+    name: v1.70 whole-chain adversarial (13 protected cases)
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -59,7 +59,7 @@ jobs:
           expected_sha = os.environ["EXPECTED_SHA"]
           passed = (
               actual_sha == expected_sha
-              and result.testsRun == 10
+              and result.testsRun == 13
               and len(result.failures) == 0
               and len(result.errors) == 0
               and len(result.skipped) == 0
@@ -71,7 +71,7 @@ jobs:
               "failures": len(result.failures),
               "errors": len(result.errors),
               "skips": len(result.skipped),
-              "protected_cases": 10 if passed else 0,
+              "protected_cases": 13 if passed else 0,
               "result": "PASS" if passed else "FAIL",
           }
           (evidence / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")

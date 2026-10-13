@@ -1,9 +1,8 @@
 """Release-specific ordered-chain regressions for the v1.70 candidate.
 
-These three cases are intentionally exposed to the v1.70 whole-chain workflow
-before its frozen protected-case count is raised from 10 to 13. That staged
-transition requires a measured count-mismatch RED before the release scope is
-refrozen; the product assertions themselves must remain green.
+These are protected cases 11-13 of the refrozen v1.70 whole-chain gate. They
+exercise stage ordering inside the identity + authority revision + fenced effect
+path rather than relying only on the broader feature regression suite.
 """
 
 from copy import deepcopy
