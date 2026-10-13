@@ -769,20 +769,22 @@ class ProvenanceNARFSession(StageOrderedNARFSession):
         provenance_error = self._provenance_error()
         if provenance_error:
             return {"result": "BLOCKED", "reason": provenance_error}
-        missing = [item for item in self.requirements() if item not in self._NARFSession__runs]
-        if missing:
-            return {"result": "BLOCKED", "reason": "INCOMPLETE_EVIDENCE"}
         if len(set(self._NARFSession__runs.values())) != len(self._NARFSession__runs):
             return {"result": "BLOCKED", "reason": "REPLAYED_EVIDENCE"}
 
         statuses = []
         for requirement in self._NARFSession__contract["requirements"]:
-            run_id = self._NARFSession__runs[requirement["requirement_id"]]
+            run_id = self._NARFSession__runs.get(requirement["requirement_id"])
+            if run_id is None:
+                continue
             if not self._valid_stage_evidence(requirement, run_id):
                 return {"result": "BLOCKED", "reason": "INVALID_EVIDENCE"}
             raw = self._NARFSession__store.load(run_id)
             statuses.append(raw["status"])
 
+        missing = [item for item in self.requirements() if item not in self._NARFSession__runs]
+        if missing:
+            return {"result": "BLOCKED", "reason": "INCOMPLETE_EVIDENCE"}
         if "FAIL" in statuses:
             return {"result": "FAIL", "reason": "VERIFIER_FAIL"}
         if "BLOCKED" in statuses:
