@@ -219,7 +219,17 @@ class ProvenanceAdmissionSession(_ExecutionProvenanceNARFSession):
 
             self._ProvenanceNARFSession__stage_inflight.add(requirement_id)
             try:
-                admission_id = str(uuid4())
+                admission_id = str(
+                    uuid5(
+                        NAMESPACE_URL,
+                        "narf.provenance-stage-admission.v1:"
+                        + contract["run_id"]
+                        + ":"
+                        + self._NARFSession__session_id
+                        + ":"
+                        + requirement_id,
+                    )
+                )
                 admission = self._admission_evidence(
                     requirement, role, execution_before, admission_id
                 )
