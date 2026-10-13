@@ -1,4 +1,4 @@
-"""RED tests for full actor-instance provenance at the D1 linearization point."""
+"""Acceptance tests for full actor-instance provenance at the D1 linearization point."""
 
 from copy import deepcopy
 from pathlib import Path
@@ -21,7 +21,7 @@ from narf import (
 
 
 class StrictProvenanceAdmissionAuthority:
-    """Trusted-host test authority that revalidates the full execution record."""
+    """Trusted-host authority that resolves full execution provenance atomically."""
 
     def __init__(self, fixture):
         self.fixture = fixture
@@ -37,6 +37,7 @@ class StrictProvenanceAdmissionAuthority:
             or current.get("revision") != expected_revision
         ):
             raise NARFError("provenance: admission authority state changed")
+        return current
 
     def reserve_stage(
         self,
@@ -46,19 +47,32 @@ class StrictProvenanceAdmissionAuthority:
         expected_revision,
         actor_role,
         actor_instance_id,
-        expected_execution_sha256,
     ):
         with self.lock:
             if self.stage_before_check is not None:
                 hook = self.stage_before_check
                 self.stage_before_check = None
                 hook()
-            self._require_current(expected_snapshot_sha256, expected_revision)
+
+            current = self._require_current(
+                expected_snapshot_sha256, expected_revision
+            )
+            expected_actor = current.get("actors", {}).get(actor_role)
             current_execution = deepcopy(self.fixture.execution.get(actor_role))
+            if not isinstance(expected_actor, dict) or not isinstance(current_execution, dict):
+                raise NARFError("provenance: admission execution binding unavailable")
+
+            expected_keys = {"actor_role", "actor_instance_id"} | set(expected_actor)
+            actual_actor = {
+                field: current_execution.get(field)
+                for field in expected_actor
+            }
             if (
-                not isinstance(current_execution, dict)
+                set(current_execution) != expected_keys
+                or current_execution.get("actor_role") != actor_role
                 or current_execution.get("actor_instance_id") != actor_instance_id
-                or canonical_json_digest(current_execution) != expected_execution_sha256
+                or canonical_json_digest(actual_actor)
+                != canonical_json_digest(expected_actor)
             ):
                 raise NARFError("provenance: admission execution binding changed")
             if token in self.stage_tokens:
@@ -81,7 +95,7 @@ class StrictProvenanceAdmissionAuthority:
 
 class StageAdmissionFixture:
     def __init__(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="narf-provenance-stage-admission-red-")
+        self.tmp = tempfile.TemporaryDirectory(prefix="narf-provenance-stage-admission-")
         self.store = ReceiptStore(Path(self.tmp.name) / "receipts", b"s" * 32)
         self.gate = NARFGate(self.store)
         self.task = {"description": "full execution provenance admission"}
@@ -207,7 +221,7 @@ class StageAdmissionFixture:
         return rows
 
 
-class FullExecutionProvenanceAdmissionRedTests(unittest.TestCase):
+class FullExecutionProvenanceAdmissionTests(unittest.TestCase):
     def setUp(self):
         self.fx = StageAdmissionFixture()
         self.addCleanup(self.fx.close)
