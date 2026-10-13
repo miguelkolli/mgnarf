@@ -1,6 +1,6 @@
 # Identity provenance and independence attestation boundary
 
-Status: **DESIGN FREEZE CANDIDATE — ADVERSARIAL REVISION 8 — NO RUNTIME CLAIM**
+Status: **DESIGN FREEZE CANDIDATE — ADVERSARIAL REVISION 9 — NO RUNTIME CLAIM**
 
 Related: #61
 
@@ -14,7 +14,8 @@ Revision history:
 - Revision 5: linearized stage/effect admission under concurrent provenance changes.
 - Revision 6: split pre-execution stage admission from post-execution completion.
 - Revision 7: preserve one-attempt-per-requirement-per-session semantics.
-- Revision 8: freeze an acyclic `D1 -> producer result R -> D2 -> final NARF stage receipt E` construction order.
+- Revision 8: freeze acyclic `D1 -> producer result R -> D2 -> final NARF stage receipt E` construction.
+- Revision 9: make provenance an explicit frozen-contract semantic opt-in; C authenticates an already provenance-enabled contract and can never upgrade a legacy contract post hoc.
 
 ## 1. Security claim
 
@@ -109,25 +110,52 @@ build_attestation_id
 
 B must come from the actual builder execution/output relationship through the trusted attestation path. A later registry lookup cannot retroactively prove candidate origin.
 
-### C — contract-bound provenance binding
+### P — frozen provenance-enabled MGnarf contract
 
-Created after the ordinary MGnarf contract is frozen.
+Provenance is enabled by the frozen contract itself, never by a later receipt.
 
-C binds:
+P is an unambiguously stronger MGnarf contract semantic version and binds the semantic equivalent of:
 
 ```text
-contract_id
-candidate_sha256
-task/policy/state commitments
-identity/provenance policy digest
+provenance semantics/evidence version
+provenance_required = true
+provenance_policy_sha256
 A digest / provenance_map_digest
-provenance authority/root/revision
+provenance_authority_id
+provenance_authority_trust_root_id
+provenance_revision
 B digest when builder provenance is required
+all ordinary task/candidate/state/requirements/effect commitments
+identity policy commitments when enabled
 stage_order digest when enabled
-MGnarf authority revision when enabled
 ```
 
-C is the provenance root for session/stage/effect authorization. After C exists, no wrapper/stage may silently select another A or B.
+A and B exist before P, so P can commit to them without a dependency cycle.
+
+An older gate that does not understand P's stronger semantic version MUST reject P. It MUST NOT interpret P as a legacy identity-only or unordered contract.
+
+A legacy contract cannot be upgraded to provenance semantics after freeze by attaching later receipts.
+
+### C — contract-bound provenance binding
+
+Created only for an already provenance-enabled P.
+
+C authenticates the exact relationship between P and the pre-contract provenance material. C binds:
+
+```text
+P contract_id / exact contract digest
+provenance_policy_sha256 from P
+A digest / provenance_map_digest exactly matching P
+provenance authority/root/revision exactly matching P
+B digest exactly matching P when required
+stage_order digest exactly matching P when enabled
+MGnarf authority revision when enabled
+C evidence semantic version
+```
+
+C does not activate provenance. P does.
+
+A provenance-aware gate MUST reject P before stage admission if required C is missing, invalid, stale, or inconsistent with P.
 
 ### D1 — stage-admission attestation/reservation
 
@@ -137,7 +165,7 @@ D1 binds:
 
 ```text
 C digest / provenance binding id
-contract_id
+P contract_id
 session_id
 requirement_id / authority-action id
 actor_role
@@ -152,7 +180,7 @@ D1 is host/attester-owned and created only after linearized admission succeeds.
 
 ### R — canonical producer-result commitment
 
-R is not a separate trust authority; it is the canonical host representation of what the producer/action returned for this admitted invocation.
+R is the canonical host representation of what the producer/action returned for this admitted invocation.
 
 For verifier stages, R binds the semantic equivalent of:
 
@@ -160,11 +188,12 @@ For verifier stages, R binds the semantic equivalent of:
 status: PASS / FAIL / BLOCKED
 artifact_sha256
 canonical terminal reason/result fields
+result schema/version
 ```
 
 For producer exception/unavailability/invalid result, R is a canonical BLOCKED commitment equivalent to current `VERIFIER_UNAVAILABLE` behavior with the canonical empty artifact digest.
 
-R does NOT include D2 or final stage-receipt E digests.
+R does not include D2 or E digests.
 
 ### D2 — stage-completion/result attestation
 
@@ -174,14 +203,14 @@ D2 binds:
 
 ```text
 D1 id/digest
-same contract/session/requirement/admission
+same P/session/requirement/admission
 same actor instance
 R digest
 execution-continuity result
 terminal completion metadata
 ```
 
-D2 MUST NOT bind the digest of final stage receipt E if E binds D2.
+D2 MUST NOT bind E's digest if E binds D2.
 
 ### E — final authenticated MGnarf stage receipt
 
@@ -191,8 +220,9 @@ E binds the semantic equivalent of:
 
 ```text
 all existing MGnarf requirement/verifier/task/state/effect fields
+P provenance semantic version / policy commitment
 status/reason/artifact fields from exact R
-C id/digest or exact provenance binding
+C id/digest
 D1 id/digest
 D2 id/digest
 stage-order predecessor fields when enabled
@@ -208,9 +238,9 @@ When ordered semantics are enabled, the authenticated predecessor chain referenc
 A authority-state snapshot
   -> builder execution
   -> B candidate-origin attestation
-  -> candidate/task/state freeze
-  -> contract
-  -> C contract provenance binding
+  -> P provenance-enabled contract freeze
+       commits exact A + required B + provenance policy
+  -> C exact P/A/B provenance binding
   -> D1 stage admission
   -> producer/action
   -> canonical result commitment R
@@ -225,14 +255,31 @@ A authority-state snapshot
 
 No object may depend on evidence that can only exist later in the graph.
 
-## 7. Linearized stage admission
+## 7. Contract activation and downgrade resistance
+
+The contract is the semantic activation point.
+
+Rules:
+
+- a provenance-enabled request MUST freeze as P, not as a legacy contract;
+- P MUST declare its stronger provenance semantic/evidence version;
+- P MUST commit the provenance policy and exact pre-contract A/B material required by that policy;
+- C MUST exactly confirm P's commitments;
+- missing C for P is BLOCKED before verifier execution;
+- C attached to a legacy contract cannot create a provenance claim;
+- an older/legacy gate MUST reject P rather than ignore provenance fields/version;
+- a wrapper that cannot preserve P semantics MUST reject before producer/effect execution.
+
+This prevents both silent downgrade and post-hoc security upgrades.
+
+## 8. Linearized stage admission
 
 Every provenance-dependent requirement has one host-owned admission linearization point before producer entry.
 
 At that point the host atomically, or with equivalent single-winner reservation/fencing semantics:
 
 ```text
-validates exact C
+validates exact P + C consistency
 validates current A authority/root/revision/currentness
 validates required separation for the actor/requirement
 validates actor-instance identity/provenance
@@ -249,7 +296,7 @@ Semantics:
 
 This MUST compose with existing ordered in-flight reservation and duplicate-requirement semantics, not replace them.
 
-## 8. Terminal completion and execution cardinality
+## 9. Terminal completion and execution cardinality
 
 Provenance MUST preserve the existing one-attempt-per-requirement-per-session model.
 
@@ -271,9 +318,9 @@ Rules:
 - if a higher-level fresh-session retry is otherwise permitted, it uses fresh session+D1/D2/E and cannot reuse old stage provenance;
 - provenance itself introduces no retry capability.
 
-A hard host/process crash after D1 but before terminal E leaves no PASS evidence. Orphaned D1/R/D2 fragments cannot be promoted into a completed stage after restart unless the runtime has an explicit authenticated recovery protocol; absent such a protocol they are unusable and a fresh permitted session must use fresh admission evidence.
+A hard host/process crash after D1 but before terminal E leaves no PASS evidence. Orphaned D1/R/D2 fragments cannot be promoted into a completed stage after restart unless an explicit authenticated recovery protocol is separately specified; absent that protocol they are unusable.
 
-## 9. Attestation-to-execution continuity
+## 10. Attestation-to-execution continuity
 
 A deployment must guarantee either:
 
@@ -282,7 +329,7 @@ A deployment must guarantee either:
 
 A requirement admitted under one actor/security binding but completed under another is terminally BLOCKED/stale. Drift followed by restoration does not heal the invocation when monotonic revision semantics observed the transition.
 
-## 10. Stage-order composition
+## 11. Stage-order composition
 
 When authenticated stage ordering is enabled:
 
@@ -296,7 +343,7 @@ A FAIL/BLOCKED E consumes its requirement for the session and cannot be healed b
 
 Correct provenance cannot repair wrong order; correct order cannot repair failed provenance separation.
 
-## 11. Revision, revocation and drift
+## 12. Revision, revocation and drift
 
 Changes to actor mappings, canonical equivalence resolution, provenance authority/root, relevant authority configuration, revocation state, or accepted actor-instance binding must advance/invalidate provenance state in a rollback-resistant manner.
 
@@ -304,11 +351,12 @@ If MGnarf monotonic authority revision is enabled, provenance state must be boun
 
 Required currentness/revocation data unavailable -> BLOCKED.
 
-## 12. Final decision binding
+## 13. Final decision binding
 
 A provenance-enabled final decision MUST bind, directly or transitively through authenticated E stage receipts, to:
 
 ```text
+P
 C
 required B
 all required accepted D1/R/D2/E stage chains
@@ -317,14 +365,14 @@ final authenticated ordered E chain head when enabled
 
 Only a complete required PASS set is eligible for PASS. Stable-operation, authority-revision and fencing wrappers must preserve that exact stronger decision.
 
-## 13. Linearized effect admission
+## 14. Linearized effect admission
 
 The external effect boundary has one effect-admission linearization point.
 
 At that point the trusted path atomically, or with equivalent compare-and-reserve/fencing semantics:
 
 ```text
-validates exact contract / final decision / C relationship
+validates exact P / final decision / C relationship
 validates A authority id + trust root
 validates A provenance revision/currentness
 validates required provenance revocation/currentness
@@ -343,14 +391,16 @@ Semantics:
 
 The exact claim is: provenance is current at the linearized effect-admission point.
 
-## 14. No-silent-downgrade rule
+## 15. No-silent-downgrade rule
 
 Every provenance-enabled path must preserve/enforce provenance end-to-end or reject fail closed.
 
 It MUST NOT:
 
+- freeze a provenance-enabled request as a legacy contract;
+- attach C to a legacy contract and advertise it as provenance-attested;
 - strip provenance fields;
-- reinterpret provenance authorization as legacy identity-only;
+- reinterpret P as legacy identity-only;
 - reduce canonical domain separation to label inequality;
 - switch authority/trust root;
 - mix A snapshots;
@@ -360,22 +410,22 @@ It MUST NOT:
 - use D2 as ordered predecessor evidence when E is required;
 - introduce same-session retry rejected by existing requirement semantics;
 - ignore stronger evidence versions;
-- omit C/currentness checks in stable-operation/fencing/effect paths;
+- omit P/C/currentness checks in stable-operation/fencing/effect paths;
 - split currentness and admission reservation into unordered race-prone checks.
 
-## 15. Versioning
+## 16. Versioning
 
 Existing identity-only contracts retain existing semantics.
 
-A/B/C/D1/D2/E and the stronger contract/binding path require unambiguous semantic versions. R has a canonical schema/version as a result commitment. Older consumers that do not understand stronger semantics MUST reject them, never ignore unknown fields and continue as legacy PASS.
+P is an unambiguously stronger contract semantic version. A/B/C/D1/D2/E and R each require unambiguous schemas/versions as applicable. Older consumers that do not understand P MUST reject it, never ignore unknown fields and continue as legacy PASS.
 
-## 16. Claim strength / non-goals
+## 17. Claim strength / non-goals
 
 MGnarf may claim only the dimensions the configured authority model establishes. It does not automatically prove statistical, cognitive, organizational, geographic, vendor, or failure-mode independence.
 
 This boundary does not prove resistance to compromise of the trusted host/provenance root itself, nor revoke an already-admitted external effect when the target cannot roll it back.
 
-## 17. Required adversarial coverage
+## 18. Required adversarial coverage
 
 Before runtime provenance support can be called PASS, tests must cover at minimum:
 
@@ -387,40 +437,44 @@ Before runtime provenance support can be called PASS, tests must cover at minimu
 6. mix actor fields from different A snapshots -> BLOCKED;
 7. builder provenance required but B absent -> BLOCKED;
 8. B for wrong candidate/A/revision -> BLOCKED;
-9. C binds A/B/candidate inconsistently -> BLOCKED;
-10. correct static actor record but actual stage actor instance differs -> BLOCKED;
-11. D1 absent, D2/E appears -> BLOCKED;
-12. D2 from requirement/session X attached to D1 Y -> BLOCKED;
-13. D2 binds R1 but E carries R2 status/artifact/reason -> BLOCKED;
-14. valid D2 from one D1 plus E from another D1 -> BLOCKED;
-15. ordered predecessor references D2 instead of required E -> BLOCKED;
-16. producer exception after D1 -> canonical BLOCKED R -> D2 -> E; second same-session D1 rejected;
-17. FAIL/BLOCKED E then same-session retry attempt -> rejected;
-18. fresh-session retry, where otherwise permitted, uses fresh session+D1/D2/E and cannot reuse old evidence;
-19. orphaned D1/R/D2 after hard crash -> never PASS and cannot be spliced into fresh session;
-20. duplicate D2/E race for one D1 -> at most one accepted terminal stage receipt;
-21. provenance changes after D1 before E -> terminal stage cannot reach later/final authorization under stale provenance;
-22. provenance transition races D1 and transition linearizes first -> producer not entered;
-23. D1 linearizes first, provenance changes later -> chain stale before later/final authorization;
-24. authenticated stage order wrong despite correct provenance -> BLOCKED;
-25. provenance separation wrong despite correct stage order -> BLOCKED;
-26. FAIL/BLOCKED predecessor E cannot be healed by same-session re-execution;
-27. wrapper strips/downgrades provenance -> BLOCKED;
-28. legacy gate receives stronger evidence version -> reject, never legacy PASS;
-29. final decision missing required B/C/D1/R/D2/E binding -> BLOCKED;
-30. provenance changes after final decision/fence but before effect admission -> BLOCKED;
-31. provenance drift/restore before effect -> old authorization stale when transition observed;
-32. authority/root replacement before effect -> BLOCKED;
-33. currentness/revocation unavailable at effect admission -> BLOCKED;
-34. provenance transition races effect admission and transition wins -> BLOCKED;
-35. effect admission wins under valid provenance then provenance changes -> no second effect; admitted effect not retroactively reclassified;
-36. concurrent duplicate effects -> at most one admission;
-37. exact D1 -> R -> D2 -> E construction is acyclic and internally consistent;
-38. exact A -> B -> contract -> C -> D1 -> R -> D2 -> E sequence -> eligible only if all existing MGnarf checks pass;
-39. provenance path preserves existing duplicate-requirement and ordered-PASS-prefix semantics;
-40. full existing regression suite remains green and legacy semantics remain unchanged.
+9. provenance-enabled request frozen as legacy contract then C attached -> no provenance claim/BLOCKED;
+10. legacy gate receives P -> rejected, never legacy PASS;
+11. P commits A1/B1 but C binds A2/B1 or A1/B2 -> BLOCKED;
+12. P requires C but C missing -> BLOCKED before stage admission;
+13. valid A/B -> P -> exact C -> eligible for stage admission;
+14. legacy contract without provenance opt-in cannot later be advertised as provenance-attested;
+15. correct static actor record but actual stage actor instance differs -> BLOCKED;
+16. D1 absent, D2/E appears -> BLOCKED;
+17. D2 from requirement/session X attached to D1 Y -> BLOCKED;
+18. D2 binds R1 but E carries R2 status/artifact/reason -> BLOCKED;
+19. valid D2 from one D1 plus E from another D1 -> BLOCKED;
+20. ordered predecessor references D2 instead of required E -> BLOCKED;
+21. producer exception after D1 -> canonical BLOCKED R -> D2 -> E; second same-session D1 rejected;
+22. FAIL/BLOCKED E then same-session retry attempt -> rejected;
+23. fresh-session retry, where otherwise permitted, uses fresh session+D1/D2/E and cannot reuse old evidence;
+24. orphaned D1/R/D2 after hard crash -> never PASS and cannot be spliced into fresh session;
+25. duplicate D2/E race for one D1 -> at most one accepted terminal stage receipt;
+26. provenance changes after D1 before E -> terminal stage cannot reach later/final authorization under stale provenance;
+27. provenance transition races D1 and transition linearizes first -> producer not entered;
+28. D1 linearizes first, provenance changes later -> chain stale before later/final authorization;
+29. authenticated stage order wrong despite correct provenance -> BLOCKED;
+30. provenance separation wrong despite correct stage order -> BLOCKED;
+31. FAIL/BLOCKED predecessor E cannot be healed by same-session re-execution;
+32. wrapper strips/downgrades provenance -> BLOCKED;
+33. final decision missing required P/B/C/D1/R/D2/E binding -> BLOCKED;
+34. provenance changes after final decision/fence but before effect admission -> BLOCKED;
+35. provenance drift/restore before effect -> old authorization stale when transition observed;
+36. authority/root replacement before effect -> BLOCKED;
+37. currentness/revocation unavailable at effect admission -> BLOCKED;
+38. provenance transition races effect admission and transition wins -> BLOCKED;
+39. effect admission wins under valid provenance then provenance changes -> no second effect; admitted effect not retroactively reclassified;
+40. concurrent duplicate effects -> at most one admission;
+41. exact D1 -> R -> D2 -> E construction is acyclic and internally consistent;
+42. exact A -> B -> P -> C -> D1 -> R -> D2 -> E sequence -> eligible only if all existing MGnarf checks pass;
+43. provenance path preserves existing duplicate-requirement and ordered-PASS-prefix semantics;
+44. full existing regression suite remains green and legacy semantics remain unchanged.
 
-## 18. Implementation gate
+## 19. Implementation gate
 
 No runtime change should begin until this boundary is deliberately reviewed and accepted or amended.
 
@@ -431,10 +485,11 @@ recon exact current main + stage-order candidate semantics
   -> design/adversarial freeze
   -> tests first / RED
   -> smallest implementation
+  -> P contract opt-in / legacy-rejection tests
   -> canonical equivalence tests
   -> A authority/root/rollback tests
   -> B candidate-origin tests
-  -> C contract-binding/bootstrap tests
+  -> C exact P/A/B binding tests
   -> D1 admission linearization tests
   -> R canonical-result tests
   -> D2 completion/continuity tests
