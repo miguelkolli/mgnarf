@@ -4,38 +4,29 @@ This page answers one practical question:
 
 > **Which MGnarf path do I need for the effect I am protecting?**
 
-The answer depends on the threat model. MGnarf deliberately exposes stronger
-opt-in layers instead of pretending that one local `PASS` automatically proves
-all remote execution properties.
+The answer depends on the threat model. MGnarf deliberately exposes stronger opt-in layers instead of pretending that one local `PASS` automatically proves all remote execution properties.
 
 ## Status
 
-The paths on this page describe current `main` development after the immutable
-v1.61 release tag. They do not silently rewrite the historical v1.61 release
-scope or evidence.
-
-The current stable release remains documented in
-[RELEASE-v1.61.md](RELEASE-v1.61.md) and
-[TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md).
+The current published stable release remains **v1.61**. The repository also contains the **v1.70 candidate** hardened line described in [RELEASE-v1.70.md](RELEASE-v1.70.md) and [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md). Candidate functionality is not a published stable guarantee until the final release gate completes.
 
 ## Choose the protection level
 
 | Need | Reference path | What it adds | Important retained boundary |
 | --- | --- | --- | --- |
-| Bind verification to the exact candidate/task/policy and make one local effect single-use | `NARFGate` | frozen contract, N/N evidence, state/revocation revalidation, authenticated receipts | trusted host still owns correct effect serialization |
+| Bind verification to exact candidate/task/policy and make one local effect single-use | `NARFGate` | frozen contract, N/N evidence, state/revocation revalidation, authenticated receipts | trusted host still owns correct effect serialization |
 | Require builder/verifier/authority separation | identity-enabled `NARFGate` | `principal_id`, `trust_domain`, optional `verifier_profile`, separation policy | host authenticates identity provenance |
-| Detect identity authority change-and-restore between ordinary snapshots | `AuthorityRevisionGate` | rollback-resistant monotonic authority revision bound to the identity-enabled contract | final external commit is still a separate boundary |
-| Keep one real-world operation single-use across fresh contracts/retries | `OperationBoundGate(..., authority_probe=...)` + external consumption authority | stable host-owned `operation_id` combined with identity/revision checks | consumption authority must meet the rollback threat model |
-| Carry a bound monotonic fence into the effect adapter | `FencedOperationGate` + `FencedOperationEffectExecutor` | `fence_scope_id`, frozen fencing authority, fence evidence, downgrade/direct-route guards | token transport alone does not prove the target enforces the fence |
-| Make authority/fence validity part of the external commit itself | PostgreSQL Layer C reference | DB-owned fence issuance, authority transition and effect commit serialized in one measured PostgreSQL boundary | guarantee is specific to the tested DB/functions/role model; privileged owner/admin rollback remains outside it |
+| Require required checks/authority in authenticated causal order | `NARFGate` + `freeze_contract(..., stage_order=...)` | evidence-v3 requirement chain, authenticated predecessor binding, final chain-head binding | not physical wall-clock chronology or verifier epistemic independence |
+| Detect identity authority change-and-restore | `AuthorityRevisionGate` | rollback-resistant monotonic authority revision | final external commit is still a separate boundary |
+| Keep one real-world operation single-use across fresh contracts/retries | `OperationBoundGate(..., authority_probe=...)` + external consumption authority | stable host-owned `operation_id` | authority must meet rollback threat model |
+| Carry a bound monotonic fence into the effect adapter | `FencedOperationGate` + `FencedOperationEffectExecutor` | `fence_scope_id`, frozen fencing authority, fence evidence, downgrade/direct-route guards | token transport alone does not prove target enforcement |
+| Make authority/fence validity part of external commit | PostgreSQL Layer C reference | DB-owned fence issuance, authority transition and effect commit serialized in one measured PostgreSQL boundary | guarantee is specific to tested DB/functions/role model; privileged owner/admin rollback remains outside it |
 
-These are cumulative ideas, not marketing tiers. Use only the stronger path when
-its additional trust assumptions match the system you can actually enforce.
+These are cumulative ideas. A stronger path adds conditions; it does not replace the obligations below it.
 
 ## 1. Core gate — exact evidence before action
 
-Use the core `NARFGate` when the trusted host can already serialize the relevant
-state and effect path and you primarily need to prove:
+Use core `NARFGate` when the trusted host can serialize relevant state/effect paths and you need to prove:
 
 ```text
 exact frozen candidate/task/policy
@@ -49,150 +40,121 @@ authenticated PASS
 one local effect admission
 ```
 
-The key property is not merely "tests passed". The evidence is bound to the
-exact frozen thing that is being authorized. If the candidate or relevant state
-changes, the old evidence cannot silently authorize the changed effect.
+The evidence is bound to the exact frozen thing being authorized. If relevant state changes, old evidence cannot silently authorize the changed effect.
 
-Start with:
-
-- [NARF-SPEC.md](NARF-SPEC.md)
-- [HOST-CONTRACT.md](HOST-CONTRACT.md)
-- [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md)
+Start with [NARF-SPEC.md](NARF-SPEC.md), [HOST-CONTRACT.md](HOST-CONTRACT.md) and [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md).
 
 ## 2. Identity separation — who produced the evidence?
 
-Different verifier names are not proof of independent review. Two logical
-checks may still be controlled by the same actor or failure domain.
-
-The identity-enabled path keeps these concepts separate:
+Different verifier names are not proof of independent review. Identity-enabled MGnarf keeps logical verifier ID, authenticated principal, trust domain and optional verifier profile separate.
 
 ```text
 verifier_id       which logical check?
 principal_id      who controls/authenticates the actor?
-trust_domain      which actors may fail or be compromised together?
-verifier_profile  how was the verification produced?
+trust_domain      which actors may fail together?
+verifier_profile  how was verification produced?
 ```
 
-The trusted host, not the candidate or worker, owns identity provenance.
-Separation policy can require, for example, that the builder and an independent
-security verifier have different principals and trust domains.
-
-Observed identity/profile drift is sticky for the existing authorization: once
-an existing evidence set is observed stale, restoring the old values does not
-resurrect the old PASS. Fresh verification requires a fresh authorization run.
+The trusted host owns provenance. Observed identity/profile drift is sticky for the existing authorization: restoring old values does not resurrect old evidence.
 
 See [IDENTITY-BOUNDARY.md](IDENTITY-BOUNDARY.md).
 
-## 3. Monotonic authority revision — make hidden transitions visible
+## 3. Authenticated stage ordering — what had to exist first?
 
-Snapshot comparison cannot detect this by itself:
+Identity independence does not prove causal order. If a policy requires:
 
 ```text
-check identity at revision 11
-   -> authority changes
-   -> authority is restored to the same visible values
-check identity again
+tests -> independent security review -> authority approval
 ```
 
-`AuthorityRevisionGate` binds the contract to a trusted-host monotonic authority
-revision. A relevant authority transition must advance that revision and must
-not roll it back.
+then ordinary unordered N/N evidence is insufficient to prove that sequence.
 
-This closes the measured change-and-restore gap **before effect admission**. It
-does not by itself prove that an unrelated external service cannot change state
-between the final local check and its own commit.
+The optional stage-order path freezes one complete linear permutation of exact `requirement_id` values. Ordered contracts use evidence v3.
+
+```text
+frozen builder/candidate context
+  -> requirement A PASS
+  -> requirement B PASS bound to A receipt
+  -> authority PASS bound to B receipt
+  -> decision bound to final chain head
+  -> existing guarded effect path
+```
+
+Security properties:
+
+- first stage binds to a deterministic session/contract chain seed;
+- later stage binds to authenticated predecessor receipt ID + canonical digest;
+- a future stage fails before its producer runs;
+- `FAIL`/`BLOCKED` predecessor cannot admit the next stage;
+- same-stage concurrency and same-thread re-entrancy admit at most one producer;
+- predecessor evidence from another session/contract/candidate/order cannot satisfy the chain;
+- identity separation and stage order remain independent conditions;
+- final PASS binds the final authenticated chain head;
+- authority/stable-operation/fenced wrappers preserve ordering or fail closed.
+
+Do **not** interpret this as physical wall-clock proof. The first implementation does not provide distributed consensus, cross-process shared-session ordering, parallel/DAG workflow semantics, or verifier epistemic independence.
+
+See [STAGE-ORDER-BOUNDARY.md](STAGE-ORDER-BOUNDARY.md).
+
+## 4. Monotonic authority revision — make hidden transitions visible
+
+Snapshot comparison alone cannot detect change-and-restore between reads. `AuthorityRevisionGate` binds a trusted-host monotonic revision to the authorization. Relevant transitions must advance it and must not roll it back.
+
+For ordered contracts, the authority binding covers the exact ordered contract/stage-order digest. Downgrading an ordered authority binding to an unordered form fails closed.
 
 See [AUTHORITY-REVISION.md](AUTHORITY-REVISION.md).
 
-## 4. Stable operation identity — protect the real-world operation, not one contract UUID
+## 5. Stable operation identity — protect the real-world operation
 
-A fresh NARF contract intentionally gets a fresh contract identity. That means a
-contract UUID is not enough to identify one semantic real-world operation across
-retries or newly frozen contracts.
-
-The operation-bound path adds a trusted-host-owned stable `operation_id`:
+A fresh NARF contract gets a fresh contract identity. Stable operation binding adds a host-owned semantic `operation_id` across retries/new contracts:
 
 ```text
 contract A / operation X -> consumed
 contract B / operation X -> external authority rejects replay
 ```
 
-This matters for operations such as:
+Use an external consumption authority appropriate to the rollback threat model. The repository includes filesystem, PostgreSQL and signed-witness examples.
 
-- deploy this exact release once;
-- publish this artifact once;
-- apply this migration once;
-- submit this external request once.
+See [OPERATION-IDEMPOTENCY.md](OPERATION-IDEMPOTENCY.md), [COMPOSED-OPERATION-PATH.md](COMPOSED-OPERATION-PATH.md) and [ROLLBACK-HARDENING.md](ROLLBACK-HARDENING.md).
 
-Use an external consumption authority appropriate to the rollback threat model.
-The repository includes filesystem, PostgreSQL and signed-witness examples with
-explicitly measured limits.
+## 6. Fence transport — bind effect admission to a resource generation
 
-See:
+A stable operation ID prevents replay but does not solve the final race where authority changes while an old worker can still reach an external resource.
 
-- [OPERATION-IDEMPOTENCY.md](OPERATION-IDEMPOTENCY.md)
-- [COMPOSED-OPERATION-PATH.md](COMPOSED-OPERATION-PATH.md)
-- [ROLLBACK-HARDENING.md](ROLLBACK-HARDENING.md)
-
-## 5. Fence transport — bind effect admission to a resource generation
-
-A stable operation ID prevents replay of one semantic operation, but it does not
-solve the final race where authority changes after local admission while an old
-worker is still able to reach the external resource.
-
-The fenced path adds distinct concepts:
+The fenced path adds:
 
 ```text
-operation_id         which semantic operation?
-fence_scope_id       which protected resource / ordering namespace?
-authority_revision   which authority generation?
-fence_sequence       which fence generation/order inside that scope?
-fencing_authority_id which trusted authority issued the fence?
+operation_id
+fence_scope_id
+authority_revision
+fence_sequence
+fencing_authority_id
 ```
 
-`FencedOperationGate` freezes the scope and fencing-authority identity before
-verification. `FencedOperationEffectExecutor` reserves the stable operation
-before fence issuance, validates the returned fence, persists authenticated
-fence evidence and transports the exact `FenceToken` into a
-`FencedEffectBinding`.
-
-The ordering is intentionally fail-closed:
+The fail-closed ordering is:
 
 ```text
-NARF PASS
-  -> durable stable operation reservation
+MGnarf PASS
+  -> durable stable-operation reservation
   -> acquire bound fence
   -> authenticated fence evidence
-  -> local NARF effect consumption
+  -> local NARF consumption
   -> fenced adapter(token)
 ```
 
-If uncertainty appears after the stable operation has been reserved, MGnarf
-sacrifices availability instead of automatically freeing the operation for a
-blind retry.
+For ordered v3 contracts, that exact ordered authorization is preserved through the same path. Stage ordering does not substitute for fence enforcement.
 
-But an important distinction remains:
+> **Receiving a fence token is not the same as enforcing it.**
 
-> **Receiving a fence token is not the same as enforcing a fence token.**
-
-If the target only logs the token, or the client merely checks it one more time
-before an ordinary remote write, the final external commit boundary is still
-unverified.
+If the target only logs or client-checks a token, the final external commit boundary remains unverified.
 
 See [FENCED-EFFECT-BOUNDARY.md](FENCED-EFFECT-BOUNDARY.md).
 
-## 6. PostgreSQL Layer C — enforce the fence at the measured commit boundary
+## 7. PostgreSQL Layer C — enforce the fence at commit
 
-The PostgreSQL Layer C reference is the repository's concrete example of a
-target that participates in the security boundary.
+The PostgreSQL Layer C reference is the repository's concrete example of a target that participates in the security boundary.
 
-The reference installs DB-owned functions from:
-
-```text
-sql/postgres_fencing_v1.sql
-```
-
-The public adapters are:
+Public adapters:
 
 ```text
 PostgresFencingAuthority
@@ -200,144 +162,65 @@ PostgresFenceControlPlane
 PostgresFencedTarget
 ```
 
-The security-critical flow is:
+Measured flow:
 
 ```text
 MGnarf PASS
    -> stable operation reservation
    -> PostgreSQL narf_acquire_fence(...)
    -> FenceToken
-   -> MGnarf local consumption/evidence
+   -> MGnarf consumption/evidence
    -> PostgresFencedTarget.commit(token)
    -> PostgreSQL narf_commit_fenced_effect(...)
-   -> validate current authority revision
-   -> validate current fence sequence
-   -> validate exact issuance binding
+   -> validate current authority revision + fence + issuance binding
    -> insert effect
    -> COMMIT
 ```
 
-Fence issuance, authority transitions and fenced effect commit use the same
-per-`fence_scope_id` transaction advisory-lock namespace inside PostgreSQL.
-Therefore the database determines the order rather than relying on two
-client-side snapshots.
+Fence issuance, authority transitions and fenced effect commit use the same per-`fence_scope_id` transaction advisory-lock namespace. The database determines order rather than relying on two client-side snapshots.
 
-### The important race
-
-The measured reference demonstrates this case:
-
-```text
-fence issued at authority revision 11
-   -> MGnarf reaches protected callback entry
-   -> authority advances 11 -> 12
-   -> no revision-12 effect or fence is required
-   -> old revision-11 token reaches target commit
-   -> PostgreSQL rejects the stale token
-   -> 0 external effect rows committed
-```
-
-It also measures the inverse ordering: if target commit obtains the serialized
-scope authority first and commits successfully, a later authority transition is
-ordered after that committed effect.
-
-### Runtime role model
-
-The hardened reference reduces runtime DB roles to narrow function authority:
-
-| Role | Intended database authority |
-| --- | --- |
-| fence issuer | execute `narf_acquire_fence`; use the separate stable-operation consumption ledger |
-| control plane | execute current-revision and advance-revision functions |
-| target | execute `narf_commit_fenced_effect` |
-| function/schema owner | privileged bootstrap/administrative boundary; not a runtime role |
-
-Direct DML on fencing/effect tables is revoked from the runtime roles. The CI
-harness actively attempts direct bypasses and verifies the function EXECUTE
-matrix instead of trusting the GRANT statements on paper.
-
-### What was measured
-
-The dedicated PostgreSQL fenced-target workflow requires:
-
-```text
-5 PASS
-1 LIMITATION_CONFIRMED
-0 FAIL
-```
-
-The protected cases include:
-
-- current fence commits once;
-- authority transition before target commit invalidates the old fence without a
-  newer effect;
-- newer fence supersedes older fence in the same scope;
-- authority transition serializes with concurrent fence acquisition;
-- authority transition serializes with concurrent target commit.
-
-The limitation witness deliberately shows that a privileged PostgreSQL
-owner/administrator that rewrites the authoritative fencing state can restore an
-old generation and allow the old token again. That is **not** relabeled as a
-protected case.
-
-See [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md).
-
-## 7. What the PostgreSQL claim actually means
+The measured PostgreSQL workflow requires protected PASS cases plus an explicit privileged rollback limitation. Runtime roles have narrow function authority; direct critical-table DML is denied in the tested role model.
 
 Allowed claim:
 
-> For the tested PostgreSQL function-enforced transaction/role configuration,
-> authority transitions and fence ordering are validated at the external effect
-> commit boundary; a transition that commits before the effect commit invalidates
-> the older fence.
+> For the tested PostgreSQL function-enforced transaction/role configuration, authority transitions and fence ordering are validated at the external effect commit boundary; a transition that commits before the effect commit invalidates the older fence.
 
-Not allowed:
+Not allowed claim:
 
-> MGnarf universally eliminates TOCTOU for every database, API, cloud provider
-> or external system.
+> MGnarf universally eliminates TOCTOU for every database, API, cloud provider or external system.
 
-The measured guarantee depends on the exact PostgreSQL functions, role grants,
-transaction semantics, function owner and target adapter. If those change, the
-stronger claim must be re-verified.
+See [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md).
 
-## 8. Deployment checklist for the hardened PostgreSQL reference
+## 8. Deployment checklist
 
-Before using the Layer C claim, verify at minimum:
+Before calling a hardened path protected, verify at minimum:
 
-- [ ] the supplied SQL/functions were installed from the revision you reviewed;
-- [ ] runtime issuer/control/target credentials do not have direct DML authority
-      over the fencing/effect tables beyond the documented stable-operation
-      ledger permission;
-- [ ] PUBLIC cannot execute the security-definer fencing functions;
-- [ ] each runtime role has only the function EXECUTE rights it needs;
-- [ ] `fence_scope_id` identifies the actual resource ordering domain;
-- [ ] the authority revision advances for every relevant authority transition;
-- [ ] the real external effect is performed inside the enforcing commit function
-      or an equivalently measured target boundary;
-- [ ] the privileged schema/function owner is handled according to the deployment
-      threat model;
-- [ ] database backup/restore, failover and administrative rollback are either
-      excluded from the threat model or independently protected and tested;
-- [ ] the stable `operation_id` remains the same across retries/new contracts for
-      the same semantic real-world operation;
-- [ ] ambiguous post-reservation failures do not automatically free authority for
-      blind retry;
-- [ ] you have reproduced at least one stale-fence rejection against the actual
-      deployment class.
+- [ ] the real effect credential is unavailable to candidate/worker code;
+- [ ] the exact task/candidate/effect payload is frozen;
+- [ ] required verifiers are selected and executed by trusted host authority;
+- [ ] configured identity facts come from authenticated host provenance;
+- [ ] if `stage_order` is used, it is the exact complete required `requirement_id` sequence and no wrapper drops it;
+- [ ] relevant identity/state/revocation changes use the same authority protocol as the effect path;
+- [ ] stable `operation_id` remains the same across retries/new contracts for the same real-world operation;
+- [ ] ambiguous post-reservation failure does not automatically free authority;
+- [ ] when fencing is claimed, the target actually enforces the fence at the measured boundary;
+- [ ] rollback/backup/failover/admin threats are explicitly inside or outside the deployment threat model;
+- [ ] at least one stale/revoked/replayed/incorrectly ordered effect has been tested against the real deployment class.
 
-If any required part is unknown, label that part **UNVERIFIED**.
+If a required part is unknown, label that part **UNVERIFIED**.
 
 ## 9. Recommended reading order
 
-For the strongest reference path:
+For the strongest current candidate path:
 
 1. [OVERVIEW.md](OVERVIEW.md)
 2. [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md)
 3. [IDENTITY-BOUNDARY.md](IDENTITY-BOUNDARY.md)
-4. [AUTHORITY-REVISION.md](AUTHORITY-REVISION.md)
-5. [COMPOSED-OPERATION-PATH.md](COMPOSED-OPERATION-PATH.md)
-6. [FENCED-EFFECT-BOUNDARY.md](FENCED-EFFECT-BOUNDARY.md)
-7. [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md)
-8. [HOST-CONTRACT.md](HOST-CONTRACT.md)
+4. [STAGE-ORDER-BOUNDARY.md](STAGE-ORDER-BOUNDARY.md)
+5. [AUTHORITY-REVISION.md](AUTHORITY-REVISION.md)
+6. [COMPOSED-OPERATION-PATH.md](COMPOSED-OPERATION-PATH.md)
+7. [FENCED-EFFECT-BOUNDARY.md](FENCED-EFFECT-BOUNDARY.md)
+8. [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md)
+9. [HOST-CONTRACT.md](HOST-CONTRACT.md)
 
-The stronger path is useful precisely because each layer states what it proves
-and what remains outside its boundary.
+The stronger path is useful precisely because each layer states what it proves and what remains outside its boundary.
