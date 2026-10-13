@@ -2,7 +2,7 @@ name: NARF v1.70 whole-chain candidate
 
 on:
   push:
-    branches: [main]
+    branches: [main, release/v1.70-candidate, integration/v1.70-stage-order]
   pull_request:
   workflow_dispatch:
 
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   whole-chain:
-    name: v1.70 whole-chain adversarial (10 protected cases)
+    name: v1.70 whole-chain adversarial (13 protected cases)
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -48,9 +48,10 @@ jobs:
           from pathlib import Path
 
           evidence = Path(os.environ["CI_EVIDENCE"])
-          suite = unittest.defaultTestLoader.discover(
-              "tests", pattern="test_v170_whole_chain.py"
-          )
+          loader = unittest.defaultTestLoader
+          suite = unittest.TestSuite()
+          suite.addTests(loader.discover("tests", pattern="test_v170_whole_chain.py"))
+          suite.addTests(loader.discover("tests", pattern="test_v170_stage_order_release.py"))
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           actual_sha = subprocess.check_output(
               ["git", "rev-parse", "HEAD"], text=True
@@ -58,7 +59,7 @@ jobs:
           expected_sha = os.environ["EXPECTED_SHA"]
           passed = (
               actual_sha == expected_sha
-              and result.testsRun == 10
+              and result.testsRun == 13
               and len(result.failures) == 0
               and len(result.errors) == 0
               and len(result.skipped) == 0
@@ -70,7 +71,7 @@ jobs:
               "failures": len(result.failures),
               "errors": len(result.errors),
               "skips": len(result.skipped),
-              "protected_cases": 10 if passed else 0,
+              "protected_cases": 13 if passed else 0,
               "result": "PASS" if passed else "FAIL",
           }
           (evidence / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
@@ -78,8 +79,43 @@ jobs:
           raise SystemExit(0 if passed else 1)
           PY
 
-      - name: Compile release whole-chain regression
-        run: python3 -m compileall -q tests/test_v170_whole_chain.py
+      - name: Run exact full repository regression
+        shell: bash
+        run: |
+          python3 - <<'PY' 2>&1 | tee "$CI_EVIDENCE/full-unittest.log"
+          import json, os, subprocess, unittest
+          from pathlib import Path
+
+          evidence = Path(os.environ["CI_EVIDENCE"])
+          suite = unittest.defaultTestLoader.discover("tests")
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          actual_sha = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], text=True
+          ).strip()
+          expected_sha = os.environ["EXPECTED_SHA"]
+          passed = (
+              actual_sha == expected_sha
+              and result.testsRun == 237
+              and len(result.failures) == 0
+              and len(result.errors) == 0
+              and len(result.skipped) == 0
+          )
+          summary = {
+              "commit": actual_sha,
+              "expected_commit": expected_sha,
+              "tests": result.testsRun,
+              "failures": len(result.failures),
+              "errors": len(result.errors),
+              "skips": len(result.skipped),
+              "result": "PASS" if passed else "FAIL",
+          }
+          (evidence / "full-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+          print(json.dumps(summary, indent=2))
+          raise SystemExit(0 if passed else 1)
+          PY
+
+      - name: Compile exact repository candidate
+        run: python3 -m compileall -q src tests tools
 
       - name: Preserve v1.70 whole-chain evidence
         if: always()

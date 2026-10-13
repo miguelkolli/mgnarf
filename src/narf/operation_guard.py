@@ -9,14 +9,18 @@ When ``authority_probe`` is configured, ``OperationBoundGate`` composes this
 stable operation binding with ``AuthorityRevisionGate``. That opt-in path
 therefore requires identity-bound NARF evidence plus a monotonic authority
 revision before the same stable operation token may reach the external effect.
+
+Optional authenticated stage ordering is propagated into the underlying gate;
+the wrapper never strips an ordered contract back to unordered semantics.
 """
 from __future__ import annotations
 
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from .authority_revision import AuthorityRevisionGate
-from .gate import NARFError, NARFGate, ReceiptStore
+from .gate import NARFError, ReceiptStore
 from .rollback_guard import ConsumptionAuthority
+from .stage_order import NARFGate
 
 
 def _canonical_uuid(value: str, label: str) -> str:
@@ -105,12 +109,11 @@ class OperationBoundGate:
     real external operation. Candidate-controlled operation IDs are outside the
     intended trust model.
 
-    By default the class retains its historical version-1 behavior. Supplying an
+    By default the class retains its historical behavior. Supplying an
     ``authority_probe`` opts into the stronger composed path: contract creation
     must also supply ``identity_policy`` and the underlying contract/session is
-    created through ``AuthorityRevisionGate``. This intentionally avoids adding
-    a snapshot-only identity mode to the convenience wrapper; callers wanting
-    that weaker opt-in path can use ``NARFGate`` directly.
+    created through ``AuthorityRevisionGate``. Optional ``stage_order`` is
+    propagated through either path and never silently discarded.
 
     Composed sessions also require ``OperationBoundEffectExecutor`` for effect
     entry. This prevents accidental bypass of the stable operation reservation.
@@ -143,6 +146,7 @@ class OperationBoundGate:
         effect_version: str,
         state,
         identity_policy: dict | None = None,
+        stage_order: list[str] | None = None,
     ) -> str:
         operation_id = _canonical_uuid(operation_id, "operation_id")
         if self.__authority_revision_enabled:
@@ -156,6 +160,7 @@ class OperationBoundGate:
                 effect_version=effect_version,
                 state=state,
                 identity_policy=identity_policy,
+                stage_order=stage_order,
             )
         else:
             if identity_policy is not None:
@@ -167,6 +172,7 @@ class OperationBoundGate:
                 effect_id=effect_id,
                 effect_version=effect_version,
                 state=state,
+                stage_order=stage_order,
             )
         binding_id = _binding_id(contract_id)
         self.__store.save(

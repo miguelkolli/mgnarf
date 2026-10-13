@@ -5,7 +5,6 @@ from .fenced_effect import (
     FenceToken,
     FencedEffectBinding,
     FencedOperationEffectExecutor,
-    FencedOperationGate,
     FencedOperationSession,
     FencingAuthority,
 )
@@ -13,7 +12,6 @@ from .gate import (
     EffectBinding,
     FrozenState,
     NARFError,
-    NARFGate,
     ReceiptStore,
     Requirement,
     VerifierBinding,
@@ -21,6 +19,8 @@ from .gate import (
     canonical_json_digest,
     sha256_bytes,
 )
+from .stage_order import NARFGate
+from .stage_order_fenced import FencedOperationGate
 from .operation_guard import OperationBoundEffectExecutor, OperationBoundGate
 from .postgres_authority import PostgresConsumptionAuthority
 from .postgres_fencing import (
