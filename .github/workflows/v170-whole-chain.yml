@@ -2,7 +2,7 @@ name: NARF v1.70 whole-chain candidate
 
 on:
   push:
-    branches: [main]
+    branches: [main, release/v1.70-candidate, integration/v1.70-stage-order]
   pull_request:
   workflow_dispatch:
 
