@@ -166,6 +166,14 @@ class ProvenanceAdmissionSession(_ExecutionProvenanceNARFSession):
         except Exception:
             raise NARFError("provenance: stage admission authority unavailable") from None
 
+    def _effect_admission_precondition(self) -> None:
+        """Validate mutable non-provenance effect conditions at linearization."""
+        state_error = super()._current_state_error()
+        if state_error:
+            raise NARFError(f"effect: {state_error.lower()}")
+        if not self._authenticated_decision():
+            raise NARFError("effect: PASS is invalid or stale")
+
     def _reserve_effect(self, effect_run_id: str) -> None:
         contract = self._NARFSession__contract
         try:
@@ -173,6 +181,7 @@ class ProvenanceAdmissionSession(_ExecutionProvenanceNARFSession):
                 effect_run_id,
                 expected_snapshot_sha256=contract["provenance_snapshot_sha256"],
                 expected_revision=contract["provenance_revision"],
+                admission_check=self._effect_admission_precondition,
             )
         except NARFError:
             raise
@@ -369,8 +378,10 @@ class ProvenanceAdmissionSession(_ExecutionProvenanceNARFSession):
             )
         )
 
-        # This call is the provenance-current linearization point. Do not
-        # reclassify an admitted effect if provenance changes after it returns.
+        # The authority invokes the non-provenance admission check inside the
+        # same linearization domain as provenance currentness and token reserve.
+        # A transition that wins before this point must block without consuming
+        # the effect authorization; later changes do not retroactively cancel it.
         self._reserve_effect(effect_run_id)
 
         consumed = {
