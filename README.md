@@ -65,7 +65,7 @@ For stronger threat models, MGnarf exposes additional opt-in boundaries instead 
 | --- | --- | --- |
 | exact task/candidate/policy + required evidence + one local effect admission | `NARFGate` | frozen bindings, N/N evidence, authenticated receipts, revalidation |
 | builder/verifier/authority separation | identity-enabled `NARFGate` | host-authenticated principal, trust domain, optional verifier profile |
-| require verifier/authority stages in authenticated causal order | `NARFGate(..., stage_order=...)` | evidence-v3 requirement ordering, predecessor receipt chain, final chain-head binding |
+| require verifier/authority stages in authenticated causal order | `NARFGate` + `freeze_contract(..., stage_order=...)` | evidence-v3 requirement ordering, predecessor receipt chain, final chain-head binding |
 | monotonic identity-authority generation | `AuthorityRevisionGate` | trusted-host revision bound to the authorization |
 | stable real-world operation identity across fresh contracts | `OperationBoundGate(..., authority_probe=...)` | host-owned semantic operation UUID and external single-use authority |
 | transport a bound fence into the effect adapter | `FencedOperationGate` + `FencedOperationEffectExecutor` | scope/revision/fence binding and downgrade/direct-route guards |
