@@ -79,6 +79,7 @@ class MemoryProvenanceAdmissionAuthority:
         *,
         expected_snapshot_sha256,
         expected_revision,
+        admission_check,
     ):
         if self.effect_barrier is not None:
             self.effect_barrier.wait(timeout=5)
@@ -88,6 +89,7 @@ class MemoryProvenanceAdmissionAuthority:
                 self.effect_before_check = None
                 hook()
             self._require_current(expected_snapshot_sha256, expected_revision)
+            admission_check()
             if token in self.effect_tokens:
                 raise NARFError("provenance: effect admission already consumed")
             self.effect_tokens.add(token)
