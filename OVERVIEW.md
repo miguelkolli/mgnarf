@@ -45,17 +45,18 @@ See [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md).
 
 ## Current release status
 
-The current published stable release is **v1.61**. Its immutable scope and evidence remain in:
-
-- [RELEASE-v1.61.md](RELEASE-v1.61.md)
-- [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md)
-
-The repository also contains a **v1.70 candidate** hardened line. It is not yet a stable release. The candidate adds newer identity/revision/operation/fencing work plus optional authenticated stage ordering. Its current release scope/evidence live in:
+The current published stable release is **v1.70**. Its immutable scope and evidence remain in:
 
 - [RELEASE-v1.70.md](RELEASE-v1.70.md)
 - [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md)
+- [GitHub release v1.70](https://github.com/miguelkolli/mgnarf/releases/tag/v1.70)
 
-No v1.70 stable claim exists until the release freeze is deliberately merged and the exact resulting `main` SHA passes the final push-triggered release gate.
+The stable release is bound to exact source commit `b811a13eab9cacd9f922b1f15097aa6bf700fc01`. Later documentation cleanup and development on `main` do not change that immutable release evidence.
+
+The previous immutable stable release remains v1.61:
+
+- [RELEASE-v1.61.md](RELEASE-v1.61.md)
+- [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md)
 
 ## Core rule
 
@@ -106,7 +107,7 @@ See [STAGE-ORDER-BOUNDARY.md](STAGE-ORDER-BOUNDARY.md).
 
 ## Stronger execution boundaries
 
-Depending on threat model, the candidate line can additionally compose:
+Depending on threat model, the hardened line can additionally compose:
 
 ```text
 identity separation
@@ -172,8 +173,9 @@ The PostgreSQL Layer C guarantee is specific to its tested functions/transaction
 - [COMPOSED-OPERATION-PATH.md](COMPOSED-OPERATION-PATH.md) — composed authority/stable-operation path.
 - [FENCED-EFFECT-BOUNDARY.md](FENCED-EFFECT-BOUNDARY.md) — fence transport.
 - [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md) — measured commit-time fencing.
-- [RELEASE-v1.61.md](RELEASE-v1.61.md) / [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md) — current stable.
-- [RELEASE-v1.70.md](RELEASE-v1.70.md) / [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md) — candidate scope/evidence.
+- [docs/](docs/) — secondary and historical documentation.
+- [RELEASE-v1.70.md](RELEASE-v1.70.md) / [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md) — current stable scope/evidence.
+- [RELEASE-v1.61.md](RELEASE-v1.61.md) / [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md) — previous immutable stable.
 
 ## Run the tests
 
