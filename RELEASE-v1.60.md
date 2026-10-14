@@ -24,7 +24,7 @@ The release retains the RC2 hardening and adds the final post-RC2 semantic fixes
 
 ## Stable-readiness evidence
 
-The post-RC2 semantic review is recorded in [STABLE-READINESS-v1.60.md](STABLE-READINESS-v1.60.md).
+The post-RC2 semantic review is recorded in [STABLE-READINESS-v1.60.md](docs/archive/v1.60/STABLE-READINESS-v1.60.md).
 
 The fresh post-hardening adversarial pass is recorded in [TEST-REPORT-v1.60-stable-adversarial.md](TEST-REPORT-v1.60-stable-adversarial.md).
 

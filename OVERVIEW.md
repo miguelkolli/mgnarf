@@ -118,10 +118,10 @@ identity separation
   -> target-side commit enforcement where available
 ```
 
-- [AUTHORITY-REVISION.md](AUTHORITY-REVISION.md) makes relevant authority change-and-restore visible through a trusted-host monotonic revision.
-- [OPERATION-IDEMPOTENCY.md](OPERATION-IDEMPOTENCY.md) keeps one semantic real-world operation single-use across fresh contracts/retries.
+- [AUTHORITY-REVISION.md](docs/security/AUTHORITY-REVISION.md) makes relevant authority change-and-restore visible through a trusted-host monotonic revision.
+- [OPERATION-IDEMPOTENCY.md](docs/security/OPERATION-IDEMPOTENCY.md) keeps one semantic real-world operation single-use across fresh contracts/retries.
 - [FENCED-EFFECT-BOUNDARY.md](FENCED-EFFECT-BOUNDARY.md) transports a bound fence into the effect adapter.
-- [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md) is the measured PostgreSQL Layer C example where authority/fence validity is checked at the database commit boundary.
+- [POSTGRES-FENCED-TARGET.md](docs/security/POSTGRES-FENCED-TARGET.md) is the measured PostgreSQL Layer C example where authority/fence validity is checked at the database commit boundary.
 
 A stronger wrapper must preserve an ordered v3 contract end-to-end or reject it. Silent downgrade to unordered semantics is not allowed.
 
@@ -169,10 +169,10 @@ The PostgreSQL Layer C guarantee is specific to its tested functions/transaction
 - [HARDENED-PATHS.md](HARDENED-PATHS.md) — choose stronger paths by threat model.
 - [IDENTITY-BOUNDARY.md](IDENTITY-BOUNDARY.md) — identity separation.
 - [STAGE-ORDER-BOUNDARY.md](STAGE-ORDER-BOUNDARY.md) — authenticated causal ordering.
-- [AUTHORITY-REVISION.md](AUTHORITY-REVISION.md) — monotonic authority revision.
-- [COMPOSED-OPERATION-PATH.md](COMPOSED-OPERATION-PATH.md) — composed authority/stable-operation path.
+- [AUTHORITY-REVISION.md](docs/security/AUTHORITY-REVISION.md) — monotonic authority revision.
+- [COMPOSED-OPERATION-PATH.md](docs/security/COMPOSED-OPERATION-PATH.md) — composed authority/stable-operation path.
 - [FENCED-EFFECT-BOUNDARY.md](FENCED-EFFECT-BOUNDARY.md) — fence transport.
-- [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md) — measured commit-time fencing.
+- [POSTGRES-FENCED-TARGET.md](docs/security/POSTGRES-FENCED-TARGET.md) — measured commit-time fencing.
 - [docs/](docs/) — secondary and historical documentation.
 - [RELEASE-v1.70.md](RELEASE-v1.70.md) / [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md) — current stable scope/evidence.
 - [RELEASE-v1.61.md](RELEASE-v1.61.md) / [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md) — previous immutable stable.

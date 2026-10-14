@@ -8,7 +8,7 @@ The answer depends on the threat model. MGnarf deliberately exposes stronger opt
 
 ## Status
 
-The current published stable release remains **v1.61**. The repository also contains the **v1.70 candidate** hardened line described in [RELEASE-v1.70.md](RELEASE-v1.70.md) and [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md). Candidate functionality is not a published stable guarantee until the final release gate completes.
+The current published stable release is **v1.70**, bound to exact immutable release source `b811a13eab9cacd9f922b1f15097aa6bf700fc01`. Its release scope/evidence are [RELEASE-v1.70.md](RELEASE-v1.70.md) and [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md). Later development on `main` does not change that frozen release.
 
 ## Choose the protection level
 
@@ -102,7 +102,7 @@ Snapshot comparison alone cannot detect change-and-restore between reads. `Autho
 
 For ordered contracts, the authority binding covers the exact ordered contract/stage-order digest. Downgrading an ordered authority binding to an unordered form fails closed.
 
-See [AUTHORITY-REVISION.md](AUTHORITY-REVISION.md).
+See [AUTHORITY-REVISION.md](docs/security/AUTHORITY-REVISION.md).
 
 ## 5. Stable operation identity — protect the real-world operation
 
@@ -115,7 +115,7 @@ contract B / operation X -> external authority rejects replay
 
 Use an external consumption authority appropriate to the rollback threat model. The repository includes filesystem, PostgreSQL and signed-witness examples.
 
-See [OPERATION-IDEMPOTENCY.md](OPERATION-IDEMPOTENCY.md), [COMPOSED-OPERATION-PATH.md](COMPOSED-OPERATION-PATH.md) and [ROLLBACK-HARDENING.md](ROLLBACK-HARDENING.md).
+See [OPERATION-IDEMPOTENCY.md](docs/security/OPERATION-IDEMPOTENCY.md), [COMPOSED-OPERATION-PATH.md](docs/security/COMPOSED-OPERATION-PATH.md) and [ROLLBACK-HARDENING.md](docs/security/ROLLBACK-HARDENING.md).
 
 ## 6. Fence transport — bind effect admission to a resource generation
 
@@ -189,7 +189,7 @@ Not allowed claim:
 
 > MGnarf universally eliminates TOCTOU for every database, API, cloud provider or external system.
 
-See [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md).
+See [POSTGRES-FENCED-TARGET.md](docs/security/POSTGRES-FENCED-TARGET.md).
 
 ## 8. Deployment checklist
 
@@ -211,16 +211,16 @@ If a required part is unknown, label that part **UNVERIFIED**.
 
 ## 9. Recommended reading order
 
-For the strongest current candidate path:
+For the strongest current stable hardened path:
 
 1. [OVERVIEW.md](OVERVIEW.md)
 2. [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md)
 3. [IDENTITY-BOUNDARY.md](IDENTITY-BOUNDARY.md)
 4. [STAGE-ORDER-BOUNDARY.md](STAGE-ORDER-BOUNDARY.md)
-5. [AUTHORITY-REVISION.md](AUTHORITY-REVISION.md)
-6. [COMPOSED-OPERATION-PATH.md](COMPOSED-OPERATION-PATH.md)
+5. [AUTHORITY-REVISION.md](docs/security/AUTHORITY-REVISION.md)
+6. [COMPOSED-OPERATION-PATH.md](docs/security/COMPOSED-OPERATION-PATH.md)
 7. [FENCED-EFFECT-BOUNDARY.md](FENCED-EFFECT-BOUNDARY.md)
-8. [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md)
+8. [POSTGRES-FENCED-TARGET.md](docs/security/POSTGRES-FENCED-TARGET.md)
 9. [HOST-CONTRACT.md](HOST-CONTRACT.md)
 
 The stronger path is useful precisely because each layer states what it proves and what remains outside its boundary.
