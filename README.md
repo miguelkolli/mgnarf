@@ -18,9 +18,9 @@ If an AI agent writes code, prepares a database change, proposes an API mutation
 | integrate a real protected effect | [HOST-CONTRACT.md](HOST-CONTRACT.md) |
 | inspect the behavioral specification | [NARF-SPEC.md](NARF-SPEC.md) |
 | inspect architecture and trust boundaries | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| inspect the current stable release | [RELEASE-v1.61.md](RELEASE-v1.61.md) |
-| inspect current stable evidence | [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md) |
-| inspect the v1.70 candidate scope/evidence | [RELEASE-v1.70.md](RELEASE-v1.70.md) / [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md) |
+| inspect the current stable release | [RELEASE-v1.70.md](RELEASE-v1.70.md) |
+| inspect current stable evidence | [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md) |
+| inspect the previous immutable stable release | [RELEASE-v1.61.md](RELEASE-v1.61.md) / [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md) |
 
 ## Where MGnarf sits
 
@@ -106,19 +106,13 @@ This is **not** a physical wall-clock proof, a claim of verifier epistemic indep
 
 ## Current release status
 
-The current published stable release is **v1.61**.
-
-- [RELEASE-v1.61.md](RELEASE-v1.61.md)
-- [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md)
-
-The repository also contains a **v1.70 candidate line** with newer hardened execution work, including identity/revision composition, stable operation identity, fenced effects, the PostgreSQL Layer C reference, and authenticated stage ordering. Candidate evidence is not a stable release claim.
+The current published stable release is **v1.70**.
 
 - [RELEASE-v1.70.md](RELEASE-v1.70.md)
 - [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md)
+- [GitHub release v1.70](https://github.com/miguelkolli/mgnarf/releases/tag/v1.70)
 
-`v1.70` must not be tagged or published until its release freeze is merged deliberately and the exact resulting `main` SHA receives fresh push-triggered release evidence.
-
-Historical release documents remain immutable evidence of what was measured at that time. New development does not retroactively change v1.61.
+The immutable v1.70 release is bound to exact source commit `b811a13eab9cacd9f922b1f15097aa6bf700fc01`. Historical release documents remain evidence of what was measured at their own release points; later `main` cleanup or development does not retroactively change v1.70.
 
 ## Trust boundary
 
@@ -163,8 +157,10 @@ The strongest current PostgreSQL claim is specific to the tested function/transa
 - [COMPOSED-OPERATION-PATH.md](COMPOSED-OPERATION-PATH.md) — identity/revision + stable-operation composition.
 - [FENCED-EFFECT-BOUNDARY.md](FENCED-EFFECT-BOUNDARY.md) — fence transport boundary.
 - [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md) — measured PostgreSQL Layer C commit boundary.
-- [SIGNED-WITNESS.md](SIGNED-WITNESS.md) — signed-witness authority.
-- [ROLLBACK-BOUNDARY.md](ROLLBACK-BOUNDARY.md), [ROLLBACK-HARDENING.md](ROLLBACK-HARDENING.md), [MULTIDOMAIN-FENCING.md](MULTIDOMAIN-FENCING.md) — rollback/replay boundaries.
+- [SIGNED-WITNESS.md](docs/security/authority/SIGNED-WITNESS.md) — signed-witness authority.
+- [ROLLBACK-BOUNDARY.md](ROLLBACK-BOUNDARY.md), [ROLLBACK-HARDENING.md](ROLLBACK-HARDENING.md), [MULTIDOMAIN-FENCING.md](docs/security/authority/MULTIDOMAIN-FENCING.md) — rollback/replay boundaries.
+
+Secondary and historical documentation is organized under [docs/](docs/).
 
 ## Source map
 

@@ -1,6 +1,6 @@
 # Run the distinct-UID tests with local Codex
 
-The runnable harness is [tools/test_unix_isolation.py](tools/test_unix_isolation.py).
+The runnable harness is [tools/test_unix_isolation.py](../../../tools/test_unix_isolation.py).
 It targets the external standalone mgnarf repository. It does not implement
 a new gate or involve MGSystem.
 

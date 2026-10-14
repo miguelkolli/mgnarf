@@ -30,7 +30,7 @@ If an agent can call the production deploy API, database write credential, email
 
 ## 1. Get the reference implementation
 
-MGnarf v1.61 is a Python reference implementation. The core gate uses the Python standard library. Optional authority adapters add dependencies only for their own measured boundary.
+MGnarf v1.70 is the current stable Python reference implementation. The core gate uses the Python standard library. Optional authority adapters add dependencies only for their own measured boundary.
 
 ```bash
 git clone https://github.com/miguelkolli/mgnarf.git
@@ -41,7 +41,7 @@ python3 -m compileall -q src tests tools
 
 For a first integration, keep the MGnarf source and the host wrapper under your control and import from `src/narf`. The repository does not currently claim a universal one-command production installer for every host stack.
 
-Before production use, read [HOST-CONTRACT.md](HOST-CONTRACT.md), [REFERENCE-HOST.md](REFERENCE-HOST.md), and [PROCESS-BOUNDARY.md](PROCESS-BOUNDARY.md).
+Before production use, read [HOST-CONTRACT.md](HOST-CONTRACT.md), [REFERENCE-HOST.md](docs/security/host/REFERENCE-HOST.md), and [PROCESS-BOUNDARY.md](docs/security/host/PROCESS-BOUNDARY.md).
 
 ## 2. Choose your stack
 
@@ -328,7 +328,7 @@ The reference host demonstrates:
 - stale/revoked state blocking the write;
 - replay rejection.
 
-See [REFERENCE-HOST.md](REFERENCE-HOST.md).
+See [REFERENCE-HOST.md](docs/security/host/REFERENCE-HOST.md).
 
 ## 10. Pattern F — IoT / device control
 
@@ -415,8 +415,9 @@ Relevant documents:
 
 - [ROLLBACK-BOUNDARY.md](ROLLBACK-BOUNDARY.md)
 - [ROLLBACK-HARDENING.md](ROLLBACK-HARDENING.md)
-- [POSTGRES-AUTHORITY.md](POSTGRES-AUTHORITY.md)
-- [MULTIDOMAIN-FENCING.md](MULTIDOMAIN-FENCING.md)
+- [POSTGRES-AUTHORITY.md](docs/security/authority/POSTGRES-AUTHORITY.md)
+- [MULTIDOMAIN-FENCING.md](docs/security/authority/MULTIDOMAIN-FENCING.md)
+- [SIGNED-WITNESS.md](docs/security/authority/SIGNED-WITNESS.md)
 
 ## 15. Integration checklist
 
