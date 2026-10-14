@@ -103,10 +103,10 @@ A fence token transported to a callback is not automatically an enforced externa
 
 The repository's PostgreSQL Layer C reference demonstrates one measured pattern: fence issuance, authority transition and target commit serialize in the same database scope-lock domain. That claim is specific to the tested functions, transactions and role grants; it is not a universal guarantee for arbitrary APIs or devices.
 
-See [FENCED-EFFECT-BOUNDARY.md](FENCED-EFFECT-BOUNDARY.md) and [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md).
+See [FENCED-EFFECT-BOUNDARY.md](FENCED-EFFECT-BOUNDARY.md) and [POSTGRES-FENCED-TARGET.md](docs/security/POSTGRES-FENCED-TARGET.md).
 
 ## Verification scope
 
-Repository tests demonstrate the reference in-process session/host semantics plus focused process, rollback, operation, fencing, signed-witness and PostgreSQL boundaries. The v1.70 candidate additionally measures authenticated stage ordering and its composition with authority revision and fenced execution.
+Repository tests demonstrate the reference in-process session/host semantics plus focused process, rollback, operation, fencing, signed-witness and PostgreSQL boundaries. The v1.70 stable release additionally measures authenticated stage ordering and its composition with authority revision and fenced execution.
 
 These results do not certify an arbitrary host, OS sandbox, physical-power-loss recovery, production control plane or remote target. A protected-host demonstration does not relabel documented limitations as PASS.

@@ -57,7 +57,7 @@ These remain explicit in RC1:
 - Physical-power-loss guarantees, arbitrary production sandboxing, external database/witness administration and remote-target semantics are not certified by the reference fixtures.
 - MgNarf has not received an independent security certification.
 
-See [TRUST-BOUNDARY-AUDIT-v1.60.md](TRUST-BOUNDARY-AUDIT-v1.60.md) for the whole-chain RC audit.
+See [TRUST-BOUNDARY-AUDIT-v1.60.md](docs/archive/v1.60/TRUST-BOUNDARY-AUDIT-v1.60.md) for the whole-chain RC audit.
 
 ## License
 

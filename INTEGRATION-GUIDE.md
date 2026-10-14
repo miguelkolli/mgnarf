@@ -413,8 +413,8 @@ The filesystem receipt store authenticates contents but is not rollback resistan
 
 Relevant documents:
 
-- [ROLLBACK-BOUNDARY.md](ROLLBACK-BOUNDARY.md)
-- [ROLLBACK-HARDENING.md](ROLLBACK-HARDENING.md)
+- [ROLLBACK-BOUNDARY.md](docs/security/ROLLBACK-BOUNDARY.md)
+- [ROLLBACK-HARDENING.md](docs/security/ROLLBACK-HARDENING.md)
 - [POSTGRES-AUTHORITY.md](docs/security/authority/POSTGRES-AUTHORITY.md)
 - [MULTIDOMAIN-FENCING.md](docs/security/authority/MULTIDOMAIN-FENCING.md)
 - [SIGNED-WITNESS.md](docs/security/authority/SIGNED-WITNESS.md)

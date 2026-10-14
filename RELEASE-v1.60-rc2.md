@@ -13,7 +13,7 @@ RC2 adds hardening for three confirmed findings and locks a fourth already-fixed
 3. **Session-bound rollback authority.** `RollbackProtectedEffectExecutor` derives the real contract identity from a real `NARFSession`, rejects caller-supplied mismatches, and reserves the session-bound contract ID.
 4. **Canonical task coercion regressions.** Exact regression coverage preserves strict rejection of non-string object keys, tuples/list subclasses and lone UTF-16 surrogates. No new RC2 production change was required for this item because the RC1 source already contained the strict canonical-JSON fix.
 
-See [TEST-REPORT-v1.60-rc1-redteam.md](TEST-REPORT-v1.60-rc1-redteam.md) for provenance, reproduced findings, hardening details and retained evidence limits.
+See [TEST-REPORT-v1.60-rc1-redteam.md](docs/archive/v1.60/TEST-REPORT-v1.60-rc1-redteam.md) for provenance, reproduced findings, hardening details and retained evidence limits.
 
 ## Evidence provenance
 

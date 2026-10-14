@@ -14,7 +14,7 @@ If an AI agent writes code, prepares a database change, proposes an API mutation
 | see where it belongs in a real stack | [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md) |
 | choose a hardened execution path | [HARDENED-PATHS.md](HARDENED-PATHS.md) |
 | understand authenticated verifier/authority ordering | [STAGE-ORDER-BOUNDARY.md](STAGE-ORDER-BOUNDARY.md) |
-| inspect the measured PostgreSQL commit-time reference | [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md) |
+| inspect the measured PostgreSQL commit-time reference | [POSTGRES-FENCED-TARGET.md](docs/security/POSTGRES-FENCED-TARGET.md) |
 | integrate a real protected effect | [HOST-CONTRACT.md](HOST-CONTRACT.md) |
 | inspect the behavioral specification | [NARF-SPEC.md](NARF-SPEC.md) |
 | inspect architecture and trust boundaries | [ARCHITECTURE.md](ARCHITECTURE.md) |
@@ -144,7 +144,7 @@ MGnarf does not claim:
 - protection from a malicious trusted host that deliberately bypasses the hardened path;
 - independent external security certification.
 
-The strongest current PostgreSQL claim is specific to the tested function/transaction/role configuration in [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md). A green limitation witness means the documented limitation reproduced as expected; it does not turn that limitation into a security guarantee.
+The strongest current PostgreSQL claim is specific to the tested function/transaction/role configuration in [POSTGRES-FENCED-TARGET.md](docs/security/POSTGRES-FENCED-TARGET.md). A green limitation witness means the documented limitation reproduced as expected; it does not turn that limitation into a security guarantee.
 
 ## Integration and boundary documents
 
@@ -152,13 +152,13 @@ The strongest current PostgreSQL claim is specific to the tested function/transa
 - [HOST-CONTRACT.md](HOST-CONTRACT.md) — trusted-host serialization, immutable input and persistence obligations.
 - [IDENTITY-BOUNDARY.md](IDENTITY-BOUNDARY.md) — principal/trust-domain/profile separation.
 - [STAGE-ORDER-BOUNDARY.md](STAGE-ORDER-BOUNDARY.md) — authenticated causal requirement ordering.
-- [AUTHORITY-REVISION.md](AUTHORITY-REVISION.md) — monotonic authority generation.
-- [OPERATION-IDEMPOTENCY.md](OPERATION-IDEMPOTENCY.md) — semantic operation identity.
-- [COMPOSED-OPERATION-PATH.md](COMPOSED-OPERATION-PATH.md) — identity/revision + stable-operation composition.
+- [AUTHORITY-REVISION.md](docs/security/AUTHORITY-REVISION.md) — monotonic authority generation.
+- [OPERATION-IDEMPOTENCY.md](docs/security/OPERATION-IDEMPOTENCY.md) — semantic operation identity.
+- [COMPOSED-OPERATION-PATH.md](docs/security/COMPOSED-OPERATION-PATH.md) — identity/revision + stable-operation composition.
 - [FENCED-EFFECT-BOUNDARY.md](FENCED-EFFECT-BOUNDARY.md) — fence transport boundary.
-- [POSTGRES-FENCED-TARGET.md](POSTGRES-FENCED-TARGET.md) — measured PostgreSQL Layer C commit boundary.
+- [POSTGRES-FENCED-TARGET.md](docs/security/POSTGRES-FENCED-TARGET.md) — measured PostgreSQL Layer C commit boundary.
 - [SIGNED-WITNESS.md](docs/security/authority/SIGNED-WITNESS.md) — signed-witness authority.
-- [ROLLBACK-BOUNDARY.md](ROLLBACK-BOUNDARY.md), [ROLLBACK-HARDENING.md](ROLLBACK-HARDENING.md), [MULTIDOMAIN-FENCING.md](docs/security/authority/MULTIDOMAIN-FENCING.md) — rollback/replay boundaries.
+- [ROLLBACK-BOUNDARY.md](docs/security/ROLLBACK-BOUNDARY.md), [ROLLBACK-HARDENING.md](docs/security/ROLLBACK-HARDENING.md), [MULTIDOMAIN-FENCING.md](docs/security/authority/MULTIDOMAIN-FENCING.md) — rollback/replay boundaries.
 
 Secondary and historical documentation is organized under [docs/](docs/).
 
