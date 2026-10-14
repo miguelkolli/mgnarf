@@ -1,0 +1,210 @@
+name: Prepare or verify v1.70 stable
+
+on:
+  workflow_run:
+    workflows: ["NARF reference checks"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    name: Prepare draft or verify immutable v1.70 stable
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.event == 'push' &&
+           github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: v1.70
+    steps:
+      - name: Resolve exact verified main revision
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            verified_sha="${{ github.event.workflow_run.head_sha }}"
+          else
+            verified_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          fi
+          test -n "$verified_sha"
+          echo "verified_sha=$verified_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact verified main revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.source.outputs.verified_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify source binding and release evidence files
+        shell: bash
+        env:
+          VERIFIED_MAIN_SHA: ${{ steps.source.outputs.verified_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$VERIFIED_MAIN_SHA"
+          test -f RELEASE-PUBLICATION-v1.70.md
+          test -f RELEASE-v1.70.md
+          test -f TEST-REPORT-v1.70.md
+          test -f RELEASE-CHECKLIST.md
+          current_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          test "$current_main" = "$VERIFIED_MAIN_SHA"
+
+      - name: Require complete exact-main v1.70 workflow matrix
+        shell: bash
+        env:
+          VERIFIED_MAIN_SHA: ${{ steps.source.outputs.verified_sha }}
+        run: |
+          set -euo pipefail
+
+          required=(
+            "NARF reference checks"
+            "NARF canonical binding fuzz"
+            "NARF reference-host strict task boundary"
+            "NARF rollback limitation witness"
+            "NARF rollback hardening"
+            "NARF multi-domain fencing boundary"
+            "NARF PostgreSQL authority boundary"
+            "NARF PostgreSQL fenced target"
+            "NARF signed witness boundary"
+            "NARF operation-bound authority"
+            "NARF operation idempotency witness"
+            "NARF ambiguous authority fault boundary"
+            "NARF v1.70 whole-chain candidate"
+            "NARF v1.70 signed witness exact candidate"
+          )
+
+          all_green=false
+          for _attempt in $(seq 1 60); do
+            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${VERIFIED_MAIN_SHA}&event=push&per_page=100")"
+            pending=false
+            failed=false
+
+            for workflow_name in "${required[@]}"; do
+              record="$(printf '%s' "$runs" | jq -c --arg name "$workflow_name" '[.workflow_runs[] | select(.name == $name)] | sort_by(.created_at) | last // empty')"
+              if [ -z "$record" ]; then
+                echo "waiting: missing workflow run: $workflow_name"
+                pending=true
+                continue
+              fi
+
+              status="$(printf '%s' "$record" | jq -r '.status')"
+              conclusion="$(printf '%s' "$record" | jq -r '.conclusion // ""')"
+              head_sha="$(printf '%s' "$record" | jq -r '.head_sha')"
+              event="$(printf '%s' "$record" | jq -r '.event')"
+
+              test "$head_sha" = "$VERIFIED_MAIN_SHA"
+              test "$event" = "push"
+
+              if [ "$status" != "completed" ]; then
+                echo "waiting: $workflow_name status=$status"
+                pending=true
+              elif [ "$conclusion" != "success" ]; then
+                echo "failed: $workflow_name conclusion=$conclusion" >&2
+                failed=true
+              fi
+            done
+
+            if [ "$failed" = true ]; then
+              exit 1
+            fi
+            if [ "$pending" = false ]; then
+              all_green=true
+              break
+            fi
+            sleep 10
+          done
+
+          if [ "$all_green" != true ]; then
+            echo "Exact-main v1.70 workflow matrix did not converge to 14/14 success." >&2
+            exit 1
+          fi
+
+          echo "Exact-main v1.70 workflow matrix: 14/14 success on ${VERIFIED_MAIN_SHA}."
+
+      - name: Prepare draft or verify published immutable stable release
+        shell: bash
+        env:
+          VERIFIED_MAIN_SHA: ${{ steps.source.outputs.verified_sha }}
+        run: |
+          set -euo pipefail
+
+          if existing_ref="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" 2>/dev/null)"; then
+            existing_type="$(printf '%s' "$existing_ref" | jq -r '.object.type')"
+            existing_sha="$(printf '%s' "$existing_ref" | jq -r '.object.sha')"
+            test "$existing_type" = "commit"
+            release="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+            test "$(printf '%s' "$release" | jq -r '.immutable')" = "true"
+            test "$(printf '%s' "$release" | jq -r '.draft')" = "false"
+            test "$(printf '%s' "$release" | jq -r '.prerelease')" = "false"
+            test "$(printf '%s' "$release" | jq -r '.target_commitish')" = "$existing_sha"
+            printf '%s' "$release" | jq -e --arg sha "$existing_sha" '.body | contains($sha)' >/dev/null
+            echo "${RELEASE_TAG} remains immutable and pinned to ${existing_sha}; current verified main is ${VERIFIED_MAIN_SHA}."
+            exit 0
+          fi
+
+          current_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [ "$current_main" != "$VERIFIED_MAIN_SHA" ]; then
+            echo "main moved from verified SHA ${VERIFIED_MAIN_SHA} to ${current_main}; refusing stable draft preparation." >&2
+            exit 1
+          fi
+
+          release_body="$(mktemp)"
+          trap 'rm -f "$release_body"' EXIT
+          cat RELEASE-PUBLICATION-v1.70.md > "$release_body"
+          cat >> "$release_body" <<EOF
+
+## Final exact release source
+
+This draft is prepared only after the complete push-triggered v1.70 workflow matrix
+revalidated the exact main revision below:
+
+$VERIFIED_MAIN_SHA
+
+Pinned evidence at that exact revision:
+
+- https://github.com/${GITHUB_REPOSITORY}/blob/$VERIFIED_MAIN_SHA/RELEASE-PUBLICATION-v1.70.md
+- https://github.com/${GITHUB_REPOSITORY}/blob/$VERIFIED_MAIN_SHA/RELEASE-v1.70.md
+- https://github.com/${GITHUB_REPOSITORY}/blob/$VERIFIED_MAIN_SHA/TEST-REPORT-v1.70.md
+- https://github.com/${GITHUB_REPOSITORY}/commit/$VERIFIED_MAIN_SHA
+
+Publication is still blocked until a repository administrator confirms release
+immutability remains enabled. Publish this exact draft without retargeting it.
+EOF
+
+          draft_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\" and .draft == true) | .id" | head -n 1)"
+
+          if [ -z "$draft_id" ]; then
+            draft_payload="$(jq -n \
+              --arg tag "$RELEASE_TAG" \
+              --arg target "$VERIFIED_MAIN_SHA" \
+              --arg name "$RELEASE_TAG" \
+              --rawfile body "$release_body" \
+              '{tag_name:$tag,target_commitish:$target,name:$name,body:$body,draft:true,prerelease:false}')"
+            draft_id="$(printf '%s' "$draft_payload" | gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/releases" --input - --jq '.id')"
+          fi
+
+          test -n "$draft_id"
+          draft="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${draft_id}")"
+          test "$(printf '%s' "$draft" | jq -r '.tag_name')" = "$RELEASE_TAG"
+          test "$(printf '%s' "$draft" | jq -r '.draft')" = "true"
+          test "$(printf '%s' "$draft" | jq -r '.prerelease')" = "false"
+          test "$(printf '%s' "$draft" | jq -r '.target_commitish')" = "$VERIFIED_MAIN_SHA"
+          printf '%s' "$draft" | jq -e --arg sha "$VERIFIED_MAIN_SHA" '.body | contains($sha)' >/dev/null
+
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Draft preparation unexpectedly created ${RELEASE_TAG}; refusing acceptance." >&2
+            exit 1
+          fi
+
+          echo "Stable draft ${RELEASE_TAG} is pinned to ${VERIFIED_MAIN_SHA}; no stable tag exists."
+          echo "ADMIN GATE: confirm Settings > General > Releases > Enable release immutability, then publish this exact draft without retargeting it."
