@@ -160,25 +160,17 @@ jobs:
           release_body="$(mktemp)"
           trap 'rm -f "$release_body"' EXIT
           cat RELEASE-PUBLICATION-v1.70.md > "$release_body"
-          cat >> "$release_body" <<EOF
-
-## Final exact release source
-
-This draft is prepared only after the complete push-triggered v1.70 workflow matrix
-revalidated the exact main revision below:
-
-$VERIFIED_MAIN_SHA
-
-Pinned evidence at that exact revision:
-
-- https://github.com/${GITHUB_REPOSITORY}/blob/$VERIFIED_MAIN_SHA/RELEASE-PUBLICATION-v1.70.md
-- https://github.com/${GITHUB_REPOSITORY}/blob/$VERIFIED_MAIN_SHA/RELEASE-v1.70.md
-- https://github.com/${GITHUB_REPOSITORY}/blob/$VERIFIED_MAIN_SHA/TEST-REPORT-v1.70.md
-- https://github.com/${GITHUB_REPOSITORY}/commit/$VERIFIED_MAIN_SHA
-
-Publication is still blocked until a repository administrator confirms release
-immutability remains enabled. Publish this exact draft without retargeting it.
-EOF
+          {
+            printf '\n## Final exact release source\n\n'
+            printf '%s\n\n' 'This draft is prepared only after the complete push-triggered v1.70 workflow matrix revalidated the exact main revision below:'
+            printf '%s\n\n' "$VERIFIED_MAIN_SHA"
+            printf '%s\n\n' 'Pinned evidence at that exact revision:'
+            printf '%s\n' "- https://github.com/${GITHUB_REPOSITORY}/blob/$VERIFIED_MAIN_SHA/RELEASE-PUBLICATION-v1.70.md"
+            printf '%s\n' "- https://github.com/${GITHUB_REPOSITORY}/blob/$VERIFIED_MAIN_SHA/RELEASE-v1.70.md"
+            printf '%s\n' "- https://github.com/${GITHUB_REPOSITORY}/blob/$VERIFIED_MAIN_SHA/TEST-REPORT-v1.70.md"
+            printf '%s\n\n' "- https://github.com/${GITHUB_REPOSITORY}/commit/$VERIFIED_MAIN_SHA"
+            printf '%s\n' 'Publication is still blocked until a repository administrator confirms release immutability remains enabled. Publish this exact draft without retargeting it.'
+          } >> "$release_body"
 
           draft_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\" and .draft == true) | .id" | head -n 1)"
 
