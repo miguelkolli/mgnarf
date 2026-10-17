@@ -51,10 +51,10 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$VERIFIED_MAIN_SHA"
-          test -f RELEASE-PUBLICATION-v1.70.md
-          test -f RELEASE-v1.70.md
-          test -f TEST-REPORT-v1.70.md
-          test -f RELEASE-CHECKLIST.md
+          test -f docs/RELEASE-PUBLICATION-v1.70.md
+          test -f docs/RELEASE-v1.70.md
+          test -f docs/TEST-REPORT-v1.70.md
+          test -f docs/RELEASE-CHECKLIST.md
           current_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
           test "$current_main" = "$VERIFIED_MAIN_SHA"
 
@@ -159,15 +159,15 @@ jobs:
 
           release_body="$(mktemp)"
           trap 'rm -f "$release_body"' EXIT
-          cat RELEASE-PUBLICATION-v1.70.md > "$release_body"
+          cat docs/RELEASE-PUBLICATION-v1.70.md > "$release_body"
           {
             printf '\n## Final exact release source\n\n'
             printf '%s\n\n' 'This draft is prepared only after the complete push-triggered v1.70 workflow matrix revalidated the exact main revision below:'
             printf '%s\n\n' "$VERIFIED_MAIN_SHA"
             printf '%s\n\n' 'Pinned evidence at that exact revision:'
-            printf '%s\n' "- https://github.com/${GITHUB_REPOSITORY}/blob/$VERIFIED_MAIN_SHA/RELEASE-PUBLICATION-v1.70.md"
-            printf '%s\n' "- https://github.com/${GITHUB_REPOSITORY}/blob/$VERIFIED_MAIN_SHA/RELEASE-v1.70.md"
-            printf '%s\n' "- https://github.com/${GITHUB_REPOSITORY}/blob/$VERIFIED_MAIN_SHA/TEST-REPORT-v1.70.md"
+            printf '%s\n' "- https://github.com/${GITHUB_REPOSITORY}/blob/$VERIFIED_MAIN_SHA/docs/RELEASE-PUBLICATION-v1.70.md"
+            printf '%s\n' "- https://github.com/${GITHUB_REPOSITORY}/blob/$VERIFIED_MAIN_SHA/docs/RELEASE-v1.70.md"
+            printf '%s\n' "- https://github.com/${GITHUB_REPOSITORY}/blob/$VERIFIED_MAIN_SHA/docs/TEST-REPORT-v1.70.md"
             printf '%s\n\n' "- https://github.com/${GITHUB_REPOSITORY}/commit/$VERIFIED_MAIN_SHA"
             printf '%s\n' 'Publication is still blocked until a repository administrator confirms release immutability remains enabled. Publish this exact draft without retargeting it.'
           } >> "$release_body"

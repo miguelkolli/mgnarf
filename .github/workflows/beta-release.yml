@@ -32,7 +32,7 @@ jobs:
       - name: Verify workflow source binding
         run: |
           test "$(git rev-parse HEAD)" = "$VERIFIED_MAIN_SHA"
-          test -f RELEASE-v1.60-beta.1.md
+          test -f docs/RELEASE-v1.60-beta.1.md
       - name: Create once or verify pinned beta release
         shell: bash
         run: |
@@ -57,7 +57,7 @@ jobs:
             --target "$PINNED_RELEASE_SHA" \
             --title "$RELEASE_TAG" \
             --prerelease \
-            --notes-file RELEASE-v1.60-beta.1.md
+            --notes-file docs/RELEASE-v1.60-beta.1.md
 
           created_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha')"
           test "$created_sha" = "$PINNED_RELEASE_SHA"

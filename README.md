@@ -10,17 +10,17 @@ If an AI agent writes code, prepares a database change, proposes an API mutation
 
 | I want to... | Read |
 | --- | --- |
-| understand MGnarf in plain English | [OVERVIEW.md](OVERVIEW.md) |
-| see where it belongs in a real stack | [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md) |
-| choose a hardened execution path | [HARDENED-PATHS.md](HARDENED-PATHS.md) |
-| understand authenticated verifier/authority ordering | [STAGE-ORDER-BOUNDARY.md](STAGE-ORDER-BOUNDARY.md) |
+| understand MGnarf in plain English | [OVERVIEW.md](docs/OVERVIEW.md) |
+| see where it belongs in a real stack | [INTEGRATION-GUIDE.md](docs/INTEGRATION-GUIDE.md) |
+| choose a hardened execution path | [HARDENED-PATHS.md](docs/HARDENED-PATHS.md) |
+| understand authenticated verifier/authority ordering | [STAGE-ORDER-BOUNDARY.md](docs/STAGE-ORDER-BOUNDARY.md) |
 | inspect the measured PostgreSQL commit-time reference | [POSTGRES-FENCED-TARGET.md](docs/security/POSTGRES-FENCED-TARGET.md) |
-| integrate a real protected effect | [HOST-CONTRACT.md](HOST-CONTRACT.md) |
-| inspect the behavioral specification | [NARF-SPEC.md](NARF-SPEC.md) |
-| inspect architecture and trust boundaries | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| inspect the current stable release | [RELEASE-v1.70.md](RELEASE-v1.70.md) |
-| inspect current stable evidence | [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md) |
-| inspect the previous immutable stable release | [RELEASE-v1.61.md](RELEASE-v1.61.md) / [TEST-REPORT-v1.61.md](TEST-REPORT-v1.61.md) |
+| integrate a real protected effect | [HOST-CONTRACT.md](docs/HOST-CONTRACT.md) |
+| inspect the behavioral specification | [NARF-SPEC.md](docs/NARF-SPEC.md) |
+| inspect architecture and trust boundaries | [ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| inspect the current stable release | [RELEASE-v1.70.md](docs/RELEASE-v1.70.md) |
+| inspect current stable evidence | [TEST-REPORT-v1.70.md](docs/TEST-REPORT-v1.70.md) |
+| inspect the previous immutable stable release | [RELEASE-v1.61.md](docs/RELEASE-v1.61.md) / [TEST-REPORT-v1.61.md](docs/TEST-REPORT-v1.61.md) |
 
 ## Where MGnarf sits
 
@@ -102,14 +102,14 @@ frozen builder/candidate context
 
 The order is frozen by exact `requirement_id`. The first stage binds to a session/contract-owned chain seed; each later stage binds to the authenticated predecessor receipt ID and canonical digest. A future stage is rejected before its producer runs. The final decision binds to the final authenticated chain head.
 
-This is **not** a physical wall-clock proof, a claim of verifier epistemic independence, or distributed consensus. See [STAGE-ORDER-BOUNDARY.md](STAGE-ORDER-BOUNDARY.md).
+This is **not** a physical wall-clock proof, a claim of verifier epistemic independence, or distributed consensus. See [STAGE-ORDER-BOUNDARY.md](docs/STAGE-ORDER-BOUNDARY.md).
 
 ## Current release status
 
 The current published stable release is **v1.70**.
 
-- [RELEASE-v1.70.md](RELEASE-v1.70.md)
-- [TEST-REPORT-v1.70.md](TEST-REPORT-v1.70.md)
+- [RELEASE-v1.70.md](docs/RELEASE-v1.70.md)
+- [TEST-REPORT-v1.70.md](docs/TEST-REPORT-v1.70.md)
 - [GitHub release v1.70](https://github.com/miguelkolli/mgnarf/releases/tag/v1.70)
 
 The immutable v1.70 release is bound to exact source commit `b811a13eab9cacd9f922b1f15097aa6bf700fc01`. Historical release documents remain evidence of what was measured at their own release points; later `main` cleanup or development does not retroactively change v1.70.
@@ -148,14 +148,14 @@ The strongest current PostgreSQL claim is specific to the tested function/transa
 
 ## Integration and boundary documents
 
-- [INTEGRATION-GUIDE.md](INTEGRATION-GUIDE.md) — placement in real stacks.
-- [HOST-CONTRACT.md](HOST-CONTRACT.md) — trusted-host serialization, immutable input and persistence obligations.
-- [IDENTITY-BOUNDARY.md](IDENTITY-BOUNDARY.md) — principal/trust-domain/profile separation.
-- [STAGE-ORDER-BOUNDARY.md](STAGE-ORDER-BOUNDARY.md) — authenticated causal requirement ordering.
+- [INTEGRATION-GUIDE.md](docs/INTEGRATION-GUIDE.md) — placement in real stacks.
+- [HOST-CONTRACT.md](docs/HOST-CONTRACT.md) — trusted-host serialization, immutable input and persistence obligations.
+- [IDENTITY-BOUNDARY.md](docs/IDENTITY-BOUNDARY.md) — principal/trust-domain/profile separation.
+- [STAGE-ORDER-BOUNDARY.md](docs/STAGE-ORDER-BOUNDARY.md) — authenticated causal requirement ordering.
 - [AUTHORITY-REVISION.md](docs/security/AUTHORITY-REVISION.md) — monotonic authority generation.
 - [OPERATION-IDEMPOTENCY.md](docs/security/OPERATION-IDEMPOTENCY.md) — semantic operation identity.
 - [COMPOSED-OPERATION-PATH.md](docs/security/COMPOSED-OPERATION-PATH.md) — identity/revision + stable-operation composition.
-- [FENCED-EFFECT-BOUNDARY.md](FENCED-EFFECT-BOUNDARY.md) — fence transport boundary.
+- [FENCED-EFFECT-BOUNDARY.md](docs/FENCED-EFFECT-BOUNDARY.md) — fence transport boundary.
 - [POSTGRES-FENCED-TARGET.md](docs/security/POSTGRES-FENCED-TARGET.md) — measured PostgreSQL Layer C commit boundary.
 - [SIGNED-WITNESS.md](docs/security/authority/SIGNED-WITNESS.md) — signed-witness authority.
 - [ROLLBACK-BOUNDARY.md](docs/security/ROLLBACK-BOUNDARY.md), [ROLLBACK-HARDENING.md](docs/security/ROLLBACK-HARDENING.md), [MULTIDOMAIN-FENCING.md](docs/security/authority/MULTIDOMAIN-FENCING.md) — rollback/replay boundaries.
@@ -195,7 +195,7 @@ GitHub Actions live in [.github/workflows/](.github/workflows/). A green workflo
 
 - [LICENSE](LICENSE) — Apache License 2.0.
 - [NOTICE](NOTICE) — required project attribution.
-- [TRADEMARKS.md](TRADEMARKS.md) — naming/official-project boundary.
+- [TRADEMARKS.md](docs/TRADEMARKS.md) — naming/official-project boundary.
 
 Redistributions and derivative works must preserve the applicable attribution from `NOTICE`:
 
@@ -205,4 +205,4 @@ This software includes software originally developed as MGNARF Ändi.
 
 ---
 
-**Shortest useful reading path:** [OVERVIEW](OVERVIEW.md) -> [INTEGRATION-GUIDE](INTEGRATION-GUIDE.md) -> [HARDENED-PATHS](HARDENED-PATHS.md) -> [HOST-CONTRACT](HOST-CONTRACT.md)
+**Shortest useful reading path:** [OVERVIEW](docs/OVERVIEW.md) -> [INTEGRATION-GUIDE](docs/INTEGRATION-GUIDE.md) -> [HARDENED-PATHS](docs/HARDENED-PATHS.md) -> [HOST-CONTRACT](docs/HOST-CONTRACT.md)

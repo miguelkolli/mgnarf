@@ -41,7 +41,7 @@ python3 -m compileall -q src tests tools
 
 For a first integration, keep the MGnarf source and the host wrapper under your control and import from `src/narf`. The repository does not currently claim a universal one-command production installer for every host stack.
 
-Before production use, read [HOST-CONTRACT.md](HOST-CONTRACT.md), [REFERENCE-HOST.md](docs/security/host/REFERENCE-HOST.md), and [PROCESS-BOUNDARY.md](docs/security/host/PROCESS-BOUNDARY.md).
+Before production use, read [HOST-CONTRACT.md](HOST-CONTRACT.md), [REFERENCE-HOST.md](security/host/REFERENCE-HOST.md), and [PROCESS-BOUNDARY.md](security/host/PROCESS-BOUNDARY.md).
 
 ## 2. Choose your stack
 
@@ -328,7 +328,7 @@ The reference host demonstrates:
 - stale/revoked state blocking the write;
 - replay rejection.
 
-See [REFERENCE-HOST.md](docs/security/host/REFERENCE-HOST.md).
+See [REFERENCE-HOST.md](security/host/REFERENCE-HOST.md).
 
 ## 10. Pattern F — IoT / device control
 
@@ -413,11 +413,11 @@ The filesystem receipt store authenticates contents but is not rollback resistan
 
 Relevant documents:
 
-- [ROLLBACK-BOUNDARY.md](docs/security/ROLLBACK-BOUNDARY.md)
-- [ROLLBACK-HARDENING.md](docs/security/ROLLBACK-HARDENING.md)
-- [POSTGRES-AUTHORITY.md](docs/security/authority/POSTGRES-AUTHORITY.md)
-- [MULTIDOMAIN-FENCING.md](docs/security/authority/MULTIDOMAIN-FENCING.md)
-- [SIGNED-WITNESS.md](docs/security/authority/SIGNED-WITNESS.md)
+- [ROLLBACK-BOUNDARY.md](security/ROLLBACK-BOUNDARY.md)
+- [ROLLBACK-HARDENING.md](security/ROLLBACK-HARDENING.md)
+- [POSTGRES-AUTHORITY.md](security/authority/POSTGRES-AUTHORITY.md)
+- [MULTIDOMAIN-FENCING.md](security/authority/MULTIDOMAIN-FENCING.md)
+- [SIGNED-WITNESS.md](security/authority/SIGNED-WITNESS.md)
 
 ## 15. Integration checklist
 

@@ -9,7 +9,7 @@ NARF is a standalone fail-closed acceptance gate for AI-assisted and automated
 work. This release candidate covers the Python standard-library reference
 implementation, authenticated receipts, frozen task/candidate bindings,
 pre-effect revalidation and at-most-once callback invocation under the
-[trusted-host contract](../../../HOST-CONTRACT.md). MGSystem is outside this scope.
+[trusted-host contract](../../HOST-CONTRACT.md). MGSystem is outside this scope.
 
 Release source: [`45be1f7b7bbe25003a0ecc49c861dc3f653470f9`](https://github.com/miguelkolli/mgnarf/commit/45be1f7b7bbe25003a0ecc49c861dc3f653470f9).
 The proposed tag must point to that exact tested commit.
@@ -39,7 +39,7 @@ The completed job steps and their emitted summaries were checked.
 
 The two test counts describe different suites and are not combined.
 The recorded reference environment was Python 3.12.3 on Linux.
-See [TEST-REPORT.md](../../../TEST-REPORT.md) for earlier supplemental tests and audits.
+See [TEST-REPORT.md](../../TEST-REPORT.md) for earlier supplemental tests and audits.
 
 ## Integration requirements and limits
 
@@ -62,7 +62,7 @@ Apache License 2.0. Preserve the applicable attribution in [NOTICE](../../../NOT
 This software includes software originally developed as MGNARF Ändi.
 ```
 
-See [LICENSE](../../../LICENSE) and [TRADEMARKS.md](../../../TRADEMARKS.md).
+See [LICENSE](../../../LICENSE) and [TRADEMARKS.md](../../TRADEMARKS.md).
 
 > PINKY: What are we publishing, Brain?  
 > BRAIN: The tested reference, with its evidence and limits.
