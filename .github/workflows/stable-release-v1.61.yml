@@ -34,8 +34,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$VERIFIED_MAIN_SHA"
-          test -f RELEASE-v1.61.md
-          test -f TEST-REPORT-v1.61.md
+          test -f docs/RELEASE-v1.61.md
+          test -f docs/TEST-REPORT-v1.61.md
 
       - name: Prepare draft or verify published immutable stable release
         shell: bash
@@ -87,7 +87,7 @@ jobs:
               --arg tag "$RELEASE_TAG" \
               --arg target "$VERIFIED_MAIN_SHA" \
               --arg name "$RELEASE_TAG" \
-              --rawfile body RELEASE-v1.61.md \
+              --rawfile body docs/RELEASE-v1.61.md \
               '{tag_name:$tag,target_commitish:$target,name:$name,body:$body,draft:true,prerelease:false}')"
             draft_id="$(printf '%s' "$draft_payload" | gh api --method POST \
               "repos/${GITHUB_REPOSITORY}/releases" --input - --jq '.id')"

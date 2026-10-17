@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$VERIFIED_MAIN_SHA"
-          test -f RELEASE-v1.60-rc1.md
+          test -f docs/RELEASE-v1.60-rc1.md
 
       - name: Create once or verify pinned immutable RC1 release
         shell: bash
@@ -71,7 +71,7 @@ jobs:
             --target "$PINNED_RELEASE_SHA" \
             --title "$RELEASE_TAG" \
             --prerelease \
-            --notes-file RELEASE-v1.60-rc1.md
+            --notes-file docs/RELEASE-v1.60-rc1.md
 
           created_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha')"
           immutable="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.immutable')"

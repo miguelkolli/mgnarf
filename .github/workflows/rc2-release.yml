@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$VERIFIED_MAIN_SHA"
-          test -f RELEASE-v1.60-rc2.md
+          test -f docs/RELEASE-v1.60-rc2.md
 
       - name: Prepare draft or verify published immutable RC2
         shell: bash
@@ -79,7 +79,7 @@ jobs:
               --title "$RELEASE_TAG" \
               --prerelease \
               --draft \
-              --notes-file RELEASE-v1.60-rc2.md
+              --notes-file docs/RELEASE-v1.60-rc2.md
             draft_id="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\" and .draft == true) | .id" | head -n 1)"
           fi
 
