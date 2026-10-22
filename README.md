@@ -6,6 +6,12 @@ MGnarf is a fail-closed execution gate for AI-assisted and automated work. It si
 
 If an AI agent writes code, prepares a database change, proposes an API mutation, or asks to deploy something, MGnarf does not treat “the checks looked good earlier” as permanent permission. It binds evidence to the exact frozen candidate and revalidates the authorization before the protected effect.
 
+## Why I built MGnarf
+
+> **I needed it. I couldn't find it. So I made it. Now you can use it. No need to ask.**
+
+I needed a way to stop AI agents from approving their own work or changing the rules used to approve it. I couldn't find a solution that fit my needs, so I built MGnarf and made it open source. Copy it, use it, test it, and improve it under the [Apache 2.0 license](LICENSE). No need to ask me for permission or notify me.
+
 ## Start here
 
 | I want to... | Read |
