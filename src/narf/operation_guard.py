@@ -12,6 +12,10 @@ revision before the same stable operation token may reach the external effect.
 
 Optional authenticated stage ordering is propagated into the underlying gate;
 the wrapper never strips an ordered contract back to unordered semantics.
+
+Provenance-v4 composition is intentionally not implemented in this wrapper.
+Explicit provenance requests are rejected before any contract or operation
+binding is persisted rather than being silently downgraded.
 """
 from __future__ import annotations
 
@@ -147,7 +151,12 @@ class OperationBoundGate:
         state,
         identity_policy: dict | None = None,
         stage_order: list[str] | None = None,
+        provenance_policy: dict | None = None,
+        provenance_snapshot: dict | None = None,
     ) -> str:
+        if provenance_policy is not None or provenance_snapshot is not None:
+            raise NARFError("provenance: operation wrapper unsupported")
+
         operation_id = _canonical_uuid(operation_id, "operation_id")
         if self.__authority_revision_enabled:
             if type(identity_policy) is not dict:
@@ -196,7 +205,17 @@ class OperationBoundGate:
         effect_binding,
         state_probe,
         revocation_probe=None,
+        provenance_probe=None,
+        execution_probe=None,
+        provenance_admission_authority=None,
     ) -> OperationBoundSession:
+        if (
+            provenance_probe is not None
+            or execution_probe is not None
+            or provenance_admission_authority is not None
+        ):
+            raise NARFError("provenance: operation wrapper unsupported")
+
         contract_id = _canonical_uuid(contract_id, "contract_id")
         binding_id = _binding_id(contract_id)
         binding = self.__store.load(binding_id)

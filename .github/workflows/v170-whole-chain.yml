@@ -95,7 +95,7 @@ jobs:
           expected_sha = os.environ["EXPECTED_SHA"]
           passed = (
               actual_sha == expected_sha
-              and result.testsRun == 237
+              and result.testsRun == 274
               and len(result.failures) == 0
               and len(result.errors) == 0
               and len(result.skipped) == 0
