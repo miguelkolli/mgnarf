@@ -5,6 +5,10 @@ semantics while propagating optional authenticated stage ordering into the
 underlying authority-revision gate. The lower-level fenced implementation stays
 unchanged; only contract creation gains the ordered v3 option.
 """
+# 🧠 BRAIN: The fenced adapter must preserve optional stage-order-v3 bindings
+# 🧠 BRAIN: into the underlying authority revision gate without downgrade.
+# 🐭 PINKY: If stage_order were omitted, a seemingly valid fenced operation
+# 🐭 PINKY: could run without the required causal verifier sequence.
 from __future__ import annotations
 
 from .fenced_effect import (
@@ -42,6 +46,8 @@ class FencedOperationGate(_BaseFencedOperationGate):
         effect_id = _identifier(effect_id, "effect_id")
         effect_version = _identifier(effect_version, "effect_version")
 
+        # 🧠 BRAIN: Forward the exact ordered contract, not a weaker rebuild.
+        # 🐭 PINKY: Losing stage_order here would silently downgrade PASS.
         contract_id = self._FencedOperationGate__gate.freeze_contract(
             task,
             task_id=task_id,

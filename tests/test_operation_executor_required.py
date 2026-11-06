@@ -1,4 +1,8 @@
 """Regression tests for mandatory executor routing in the composed operation path."""
+# 🧠 BRAIN: The composed operation path requires its guarded effect executor
+# 🧠 BRAIN: rather than exposing a second direct callback route.
+# 🐭 PINKY: A direct session effect would bypass external single-use authority;
+# 🐭 PINKY: legacy compatibility must remain explicitly distinguished.
 
 from copy import deepcopy
 from pathlib import Path

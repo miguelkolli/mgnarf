@@ -4,6 +4,10 @@ The existing v1/v2 gate semantics are delegated unchanged. Ordering-enabled
 contracts use evidence version 3 and bind every verifier receipt to one complete
 frozen requirement order and to the authenticated predecessor receipt.
 """
+# 🧠 BRAIN: Ordered-v3 evidence requires the exact authenticated predecessor
+# 🧠 BRAIN: chain; a v1/v2 gate cannot silently ignore its stage-order fields.
+# 🐭 PINKY: A same-thread verifier can re-enter before evidence is committed;
+# 🐭 PINKY: in-flight reservation closes a hole the session lock alone misses.
 from __future__ import annotations
 
 import json
@@ -353,6 +357,8 @@ class StageOrderedNARFSession(_BaseNARFSession):
                 return False
         return True
 
+    # 🧠 BRAIN: Only a current authenticated predecessor admits the next stage.
+    # 🐭 PINKY: In-flight tracking prevents duplicate re-entrant producers.
     def execute(self, requirement_id: str) -> dict:
         with self.__stage_lock:
             contract = self._NARFSession__contract

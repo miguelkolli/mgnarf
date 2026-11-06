@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: An all-of authority only helps when the domains really have
+# 🧠 BRAIN: independent persistence and rollback controls.
+# 🐭 PINKY: Partial reservation and injected rollback must fail closed;
+# 🐭 PINKY: different names for one domain are not security separation.
 """Measure multi-domain fencing against authority rollback and deletion."""
 from __future__ import annotations
 

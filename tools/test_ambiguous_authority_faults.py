@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: Fault injection must preserve consumed authority across missing
+# 🧠 BRAIN: acknowledgements and failed effect callbacks.
+# 🐭 PINKY: A timeout does not prove the remote reservation was undone;
+# 🐭 PINKY: unsafe retry logic would create a second real-world operation.
 """Fault-inject ambiguous authority outcomes after durable reservation."""
 from __future__ import annotations
 

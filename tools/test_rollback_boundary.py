@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: Receipt-history rollback is a separate adversarial condition
+# 🧠 BRAIN: from ordinary tampering with an individual receipt.
+# 🐭 PINKY: If storage can rewind independently of operation consumption,
+# 🐭 PINKY: replay remains possible unless a stronger authority blocks it.
 """Witness the documented rollback limitation of the filesystem receipt store.
 
 A successful run returns LIMITATION_CONFIRMED, not PASS. It demonstrates that

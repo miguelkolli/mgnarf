@@ -1,3 +1,7 @@
+# 🧠 BRAIN: The untrusted worker file is only a candidate; trusted evidence
+# 🧠 BRAIN: and final output remain host-controlled.
+# 🐭 PINKY: After PASS, a worker can swap or mutate the file;
+# 🐭 PINKY: revalidation must refuse a changed candidate before publication.
 import tempfile
 from pathlib import Path
 import unittest

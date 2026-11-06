@@ -4,6 +4,10 @@ The trusted host freezes task/state/bindings, runs verifier producers itself,
 authenticates evidence, and owns the gated effect. Workers do not receive a
 PASS override or evidence-submission API.
 """
+# 🧠 BRAIN: Only the trusted host freezes task, candidate, policy and verifier rules
+# 🧠 BRAIN: and authenticates evidence before permitting any protected effect.
+# 🐭 PINKY: Workers cannot supply their own PASS receipts; stale or mismatched
+# 🐭 PINKY: evidence must block, regardless of a model's claimed success.
 from __future__ import annotations
 
 import hashlib
@@ -573,6 +577,8 @@ class NARFSession:
             return True
         return value
 
+    # 🧠 BRAIN: Current candidate, requirements and policy must match freeze.
+    # 🐭 PINKY: Old PASS evidence cannot cover state changed during verification.
     def _current_state_error(self) -> str | None:
         identity_error = self._identity_state_error()
         if self._revoked():
@@ -788,6 +794,8 @@ class NARFSession:
         self.__decision = {**verdict, "decision_id": decision_id}
         return dict(self.__decision)
 
+    # 🧠 BRAIN: PASS is authenticated, current and single-use, not a flag.
+    # 🐭 PINKY: Revalidate just before entering the protected effect.
     def execute_effect(self) -> object:
         if self.__decision is None or self.__decision["result"] != "PASS":
             raise NARFError("effect: authenticated PASS required")

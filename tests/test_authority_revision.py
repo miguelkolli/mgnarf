@@ -1,4 +1,8 @@
 """Adversarial tests for monotonic authority-revision identity binding."""
+# 🧠 BRAIN: The revision check must expose host authority changes even after
+# 🧠 BRAIN: the visible identity snapshot is restored.
+# 🐭 PINKY: Snapshot-only checks can miss change-and-restore attacks;
+# 🐭 PINKY: an advanced monotonic revision must block the old contract.
 
 from copy import deepcopy
 from pathlib import Path

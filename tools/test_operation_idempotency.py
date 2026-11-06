@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: Repeated execution attempts must not produce a second effect
+# 🧠 BRAIN: under the same frozen semantic operation identity.
+# 🐭 PINKY: Ambiguous outcomes can reduce availability; they must not
+# 🐭 PINKY: silently reopen admission after a timeout.
 """Characterize cross-contract semantic idempotency.
 
 This witness asks a narrow question: if a trusted host freezes the exact same

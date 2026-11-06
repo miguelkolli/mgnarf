@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: Live PostgreSQL authority tests verify database-backed durable
+# 🧠 BRAIN: single-use semantics under real transactions.
+# 🐭 PINKY: A mocked DB config test cannot prove the ledger holds across
+# 🐭 PINKY: competing sessions or transaction failures.
 """Measure a PostgreSQL consumption authority as a separate service boundary."""
 from __future__ import annotations
 

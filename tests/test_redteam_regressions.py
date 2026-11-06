@@ -1,3 +1,7 @@
+# 🧠 BRAIN: Adversarial regressions keep known host/worker bypass attempts
+# 🧠 BRAIN: visible as executable non-PASS conditions.
+# 🐭 PINKY: Never convert a demonstrated weakness into success by deleting
+# 🐭 PINKY: or relaxing the test that detected it.
 from __future__ import annotations
 
 import base64

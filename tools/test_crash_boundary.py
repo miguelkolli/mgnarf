@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: Crash probes exercise reservation durability around protected
+# 🧠 BRAIN: effect admission rather than relying only on clean shutdown.
+# 🐭 PINKY: A post-reservation crash cannot be treated as an unspent token
+# 🐭 PINKY: without an external durable witness.
 """Measure NARF effect-reservation persistence across abrupt host-process exit.
 
 This harness tests process crash behavior only. It does not claim physical

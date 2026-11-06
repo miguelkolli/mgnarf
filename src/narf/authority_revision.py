@@ -10,6 +10,10 @@ through this wrapper. The authority-revision receipt is versioned separately so
 legacy v2 identity contracts keep their historical binding schema while ordered
 v3 contracts additionally bind the frozen stage-order digest.
 """
+# 🧠 BRAIN: The host-owned monotonic revision records authority changes even if
+# 🧠 BRAIN: a snapshot later looks identical to its original value.
+# 🐭 PINKY: Rollback of the revision source is a separate threat-model boundary;
+# 🐭 PINKY: snapshot comparison alone cannot prove uninterrupted authority.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -259,6 +263,8 @@ class AuthorityRevisionGate:
             raise NARFError("authority: revision binding does not match ordered contract")
         return binding, contract
 
+    # 🧠 BRAIN: A stable authority revision is part of the authorization.
+    # 🐭 PINKY: Restored identities must not resurrect a stale session.
     def _require_current(self, binding: dict) -> AuthoritySnapshot:
         snapshot = self._probe()
         if snapshot.revision != binding["authority_revision"]:

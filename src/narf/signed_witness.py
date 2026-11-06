@@ -4,6 +4,10 @@ The witness is a separate consumption authority. Its signing key authenticates
 responses but does not make witness storage monotonic: rollback of the witness's
 own ledger remains a separate deployment threat.
 """
+# 🧠 BRAIN: Cryptographic signatures prove witness-response origin, not
+# 🧠 BRAIN: the witness ledger's durability against privileged rollback.
+# 🐭 PINKY: Network timeouts and missing replies are ambiguous, not permission
+# 🐭 PINKY: to assume the token was never reserved.
 from __future__ import annotations
 
 import base64
@@ -189,6 +193,8 @@ class SignedWitnessAuthority(ConsumptionAuthority):
         except Exception:
             raise NARFError("effect: signed witness response invalid") from None
 
+    # 🧠 BRAIN: Authenticated witness replies bind nonce, action and token.
+    # 🐭 PINKY: A valid signature on the wrong request is still invalid.
     def _request(self, operation: str, token: str) -> dict:
         token = _canonical_uuid(token, "consumption_token")
         if operation not in {"reserve", "status"}:

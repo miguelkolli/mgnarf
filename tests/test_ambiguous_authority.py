@@ -1,3 +1,7 @@
+# 🧠 BRAIN: These regressions bind the outcome of uncertain reservations to
+# 🧠 BRAIN: the original operation rather than pretending a missing ACK is failure.
+# 🐭 PINKY: A dropped witness/DB acknowledgement cannot free a reserved token;
+# 🐭 PINKY: otherwise a retry could perform the real effect twice.
 from __future__ import annotations
 
 import json

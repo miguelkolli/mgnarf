@@ -1,4 +1,8 @@
 """Regression tests for identity drift hidden behind another host-state error."""
+# 🧠 BRAIN: An observed identity drift must remain blocking even while another
+# 🧠 BRAIN: state error is present at the same time.
+# 🐭 PINKY: An unrelated error can hide drift in a naive result path;
+# 🐭 PINKY: the old session must not resurrect when that error disappears.
 
 from copy import deepcopy
 from dataclasses import replace

@@ -1,3 +1,7 @@
+# 🧠 BRAIN: Signed-witness identity and request settings must be validated
+# 🧠 BRAIN: before accepting remote operation authority.
+# 🐭 PINKY: Malformed URLs, keys or trust configuration cannot become
+# 🐭 PINKY: a fallback PASS because the network appears unavailable.
 import base64
 import unittest
 

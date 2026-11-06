@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: The reference host binds the original strict task representation
+# 🧠 BRAIN: before committing to frozen evidence.
+# 🐭 PINKY: Coercing non-JSON Python values could make a different task
+# 🐭 PINKY: look like the contract previously approved.
 """Verify TrustedFileHost preserves the strict task boundary before NARFGate."""
 from __future__ import annotations
 

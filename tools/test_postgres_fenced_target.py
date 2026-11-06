@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: Layer C must check the fence and authority revision inside the
+# 🧠 BRAIN: same transaction as the external target commit.
+# 🐭 PINKY: A fence issued earlier cannot authorize a stale effect after
+# 🐭 PINKY: a committed authority transition wins the scope lock.
 """Measure the PostgreSQL fenced commit boundary with real transactions."""
 from __future__ import annotations
 

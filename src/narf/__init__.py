@@ -1,4 +1,8 @@
 """Public NARF reference implementation."""
+# 🧠 BRAIN: Public exports route callers to the ordered gate and fenced wrapper;
+# 🧠 BRAIN: do not accidentally downgrade v3 contracts through legacy APIs.
+# 🐭 PINKY: An exported hardened adapter still needs a real trusted-host path;
+# 🐭 PINKY: the worker must never own approval or effect credentials.
 
 from .authority_revision import AuthorityRevisionGate, AuthorityRevisionSession, AuthoritySnapshot
 from .fenced_effect import (

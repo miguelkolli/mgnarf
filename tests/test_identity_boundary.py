@@ -1,4 +1,8 @@
 """Host-owned identity and separation adversaries; no external IdP assumed."""
+# 🧠 BRAIN: Identity, trust domain and verifier profile are distinct policy
+# 🧠 BRAIN: axes; logical verifier names alone are not independence.
+# 🐭 PINKY: Builder-controlled verifier labels must not manufacture a separate
+# 🐭 PINKY: trusted principal or produce a false independent PASS.
 
 from copy import deepcopy
 from dataclasses import replace

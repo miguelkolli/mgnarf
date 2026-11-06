@@ -1,3 +1,7 @@
+# 🧠 BRAIN: The trusted host must serialize authority changes with effect entry
+# 🧠 BRAIN: instead of relying on an earlier state probe.
+# 🐭 PINKY: A mutation racing a protected effect must be ordered by the host;
+# 🐭 PINKY: testing only the happy path would miss that time-of-check gap.
 from dataclasses import replace
 import threading
 import unittest

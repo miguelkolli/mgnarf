@@ -1,3 +1,7 @@
+# 🧠 BRAIN: Stage-order v3 requires authenticated predecessor receipts in
+# 🧠 BRAIN: the complete frozen requirement sequence.
+# 🐭 PINKY: Timestamps or unordered passing verifiers must not substitute
+# 🐭 PINKY: for the actual accepted chain head.
 from pathlib import Path
 import json
 import tempfile

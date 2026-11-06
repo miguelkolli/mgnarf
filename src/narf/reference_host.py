@@ -1,4 +1,8 @@
 """Reference trusted-host integration for a real file effect."""
+# 🧠 BRAIN: The trusted host owns the receipt store and file target; its single
+# 🧠 BRAIN: process serialization is reference evidence, not a production sandbox.
+# 🐭 PINKY: Flush the whole payload before atomic publication; overwrite or
+# 🐭 PINKY: partial output would invalidate the no-overwrite effect boundary.
 from __future__ import annotations
 import json, os, threading
 from dataclasses import asdict, replace
@@ -52,6 +56,8 @@ class TrustedFileHost:
         )
         target = self.effects_dir / effect_name
 
+            # 🧠 BRAIN: Only frozen host-owned payload bytes may be published.
+            # 🐭 PINKY: Publish atomically after fsync; never expose partial output.
         def write_effect():
             # Build the complete payload under a unique host-owned temporary name.
             # The final target appears only through an atomic same-directory hard

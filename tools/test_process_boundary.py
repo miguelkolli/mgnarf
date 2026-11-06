@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: The host and worker must have distinct Unix permissions so
+# 🧠 BRAIN: worker code cannot access trusted keys or effect targets.
+# 🐭 PINKY: Process IDs and Python attribute names are not isolation;
+# 🐭 PINKY: actual UID/GID and denied filesystem operations are required.
 """Exercise a trusted host process against a distinct, keyless Unix worker.
 
 Exit 0: measured process-boundary checks passed. Exit 1: failed check.

@@ -1,4 +1,8 @@
 """Adversarial same-thread reentrancy checks for ordered stage admission."""
+# 🧠 BRAIN: In-flight stage admission must be single-winner inside a session
+# 🧠 BRAIN: even for same-thread re-entrancy and concurrent calls.
+# 🐭 PINKY: An RLock permits same-thread recursion; without explicit in-flight
+# 🐭 PINKY: tracking, the verifier producer could enter twice.
 
 from pathlib import Path
 import tempfile

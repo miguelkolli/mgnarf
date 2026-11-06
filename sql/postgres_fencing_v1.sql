@@ -1,3 +1,7 @@
+-- 🧠 BRAIN: Layer C enforces scope, revision and fencing at the target's
+-- 🧠 BRAIN: transactional effect commit, not via a trusted client snapshot.
+-- 🐭 PINKY: SECURITY DEFINER ownership, function grants and advisory locks
+-- 🐭 PINKY: are part of the measured boundary; schema changes need new tests.
 -- MGnarf PostgreSQL fenced-target reference schema/functions v1.
 -- Run as a dedicated schema/function owner. Runtime roles should receive only
 -- EXECUTE on the functions they need; direct DML on fencing/effect tables is
@@ -153,6 +157,9 @@ END;
 $$;
 
 -- NARF_STATEMENT
+-- 🧠 BRAIN: Commit-time validation must share scope serialization with
+-- 🧠 BRAIN: fence issuance and authority transitions.
+-- 🐭 PINKY: Stale tokens must be rejected even if local MGnarf PASS was valid.
 CREATE OR REPLACE FUNCTION public.narf_commit_fenced_effect(
     p_scope text,
     p_operation uuid,

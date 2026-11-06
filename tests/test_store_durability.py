@@ -1,3 +1,7 @@
+# 🧠 BRAIN: Authenticated receipts require durable, non-overwriting writes
+# 🧠 BRAIN: before they can authorize later steps.
+# 🐭 PINKY: A write without directory persistence or with partial failure
+# 🐭 PINKY: must not be mistaken for trusted finalized evidence.
 import errno
 import os
 from pathlib import Path

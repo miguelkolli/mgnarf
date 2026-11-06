@@ -1,4 +1,8 @@
 """Fresh whole-chain adversarial regressions for the v1.70 release candidate."""
+# 🧠 BRAIN: The whole-chain release suite binds independent claims across
+# 🧠 BRAIN: identity, revision, operation reservation and fence execution.
+# 🐭 PINKY: A candidate with one missing protected case cannot inherit a
+# 🐭 PINKY: historical v1.70 result or claim the same released boundary.
 
 from copy import deepcopy
 from pathlib import Path

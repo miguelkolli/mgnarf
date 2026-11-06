@@ -4,6 +4,10 @@ These are protected cases 11-13 of the refrozen v1.70 whole-chain gate. They
 exercise stage ordering inside the identity + authority revision + fenced effect
 path rather than relying only on the broader feature regression suite.
 """
+# 🧠 BRAIN: The v1.70 release scope includes ordered requirements composed
+# 🧠 BRAIN: with identity revision and fenced effect admission.
+# 🐭 PINKY: Release-specific regressions must not be skipped just because
+# 🐭 PINKY: standalone stage-order unit tests appear green.
 
 from copy import deepcopy
 from pathlib import Path

@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: Unix isolation tests must prove worker access is denied to
+# 🧠 BRAIN: host secrets and privileged effect paths.
+# 🐭 PINKY: A successful coding task does not certify OS separation;
+# 🐭 PINKY: permission denials are part of the required evidence.
 """Measure a host-owned test fixture against a distinct, keyless Unix UID.
 
 Exit 0: measured checks passed. Exit 1: failed check. Exit 2: unverified.

@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: Operation-bound effects must share one host-owned semantic ID
+# 🧠 BRAIN: across contracts rather than per-attempt identity.
+# 🐭 PINKY: Reusing a real-world action with a fresh contract cannot bypass
+# 🐭 PINKY: the external single-use reservation ledger.
 """Adversarial boundary fixture for host-owned operation identities."""
 from __future__ import annotations
 
