@@ -1,4 +1,8 @@
 """Layer A/B regressions for the fenced-effect host path."""
+# 🧠 BRAIN: This suite guards the binding of operation, fence scope, authority
+# 🧠 BRAIN: and revision across the composed fenced execution path.
+# 🐭 PINKY: Issuing a token is not proof of an external commit boundary;
+# 🐭 PINKY: wrong authority or revision must block before effect admission.
 
 from copy import deepcopy
 from pathlib import Path

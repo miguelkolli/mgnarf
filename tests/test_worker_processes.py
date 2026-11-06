@@ -1,4 +1,8 @@
 """Fresh-process checks of host-capable contenders, not Unix-account isolation."""
+# 🧠 BRAIN: A worker process must not gain trusted-host keys, receipts
+# 🧠 BRAIN: or final effect permissions through shared process state.
+# 🐭 PINKY: A passing in-process mock alone cannot establish real Unix
+# 🐭 PINKY: identity isolation or credential separation.
 from dataclasses import asdict
 import errno
 import hashlib

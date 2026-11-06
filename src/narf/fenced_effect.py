@@ -13,6 +13,10 @@ that enforces the fence at the external commit boundary.
 The wrapper is an integration guard, not a sandbox against a malicious trusted
 host deliberately abandoning the fenced API and invoking lower-level NARF APIs.
 """
+# 🧠 BRAIN: The same frozen operation, scope, revision, effect and authority identity
+# 🧠 BRAIN: must survive verification, reservation, fencing and effect admission.
+# 🐭 PINKY: Transporting a fence token does not force external commit enforcement;
+# 🐭 PINKY: the target must reject stale tokens where the effect is committed.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -466,6 +470,8 @@ class FencedOperationEffectExecutor:
 
         # Consume the stable real-world operation before attempting fence
         # issuance. Never release this reservation on any later uncertainty.
+        # 🧠 BRAIN: Reserve the semantic operation before issuing its fence.
+        # 🐭 PINKY: Never refund it after an ambiguous downstream failure.
         self.operation_authority.reserve(session.operation_id)
 
         try:

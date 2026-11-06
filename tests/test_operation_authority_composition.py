@@ -1,4 +1,8 @@
 """Composition tests for identity revision + stable operation + effect authority."""
+# 🧠 BRAIN: Identity authority revision and stable operation consumption must
+# 🧠 BRAIN: compose without allowing an effect to bypass either condition.
+# 🐭 PINKY: If revision changes during reservation, keep the token consumed
+# 🐭 PINKY: while blocking the callback; do not infer safe retry.
 
 from copy import deepcopy
 from pathlib import Path

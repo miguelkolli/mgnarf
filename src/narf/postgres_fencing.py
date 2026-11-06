@@ -8,6 +8,10 @@ The stronger guarantee remains deployment-specific: the supplied SQL functions,
 role grants, PostgreSQL transaction semantics, and protection of the function
 owner are all part of the measured trust boundary.
 """
+# 🧠 BRAIN: Layer C checks current authority and fencing at the database commit,
+# 🧠 BRAIN: not merely when the Python adapter first inspects the token.
+# 🐭 PINKY: The installed SQL functions, privileges, transaction locks and owner
+# 🐭 PINKY: are deployment-dependent security assumptions requiring tests.
 from __future__ import annotations
 
 import re
@@ -295,6 +299,8 @@ class PostgresFencedTarget:
     def domain_key(self):
         return self._domain_identity
 
+    # 🧠 BRAIN: SQL validates the fence at the final commit boundary.
+    # 🐭 PINKY: Client-side matching cannot by itself close this race.
     def commit(self, token: FenceToken, payload: str = "effect") -> str:
         token = _validate_token(token)
         if type(payload) is not str or len(payload) > 10000:

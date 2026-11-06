@@ -1,3 +1,7 @@
+# 🧠 BRAIN: Core gate regressions cover required N/N evidence, exact task
+# 🧠 BRAIN: binding and single-use effect admission.
+# 🐭 PINKY: A missing/failed/stale verifier result cannot turn into PASS;
+# 🐭 PINKY: a previously valid decision is not a permanent permission.
 import json
 from pathlib import Path
 import tempfile

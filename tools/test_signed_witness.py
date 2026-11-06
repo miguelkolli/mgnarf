@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: Signed-witness checks require authentic response bindings to
+# 🧠 BRAIN: the requested token, operation and fresh nonce.
+# 🐭 PINKY: A signed but mismatched reply or ambiguous timeout cannot
+# 🐭 PINKY: be promoted to valid external consumption evidence.
 """Measure the signed external witness boundary against database-control-plane rollback."""
 from __future__ import annotations
 

@@ -4,6 +4,10 @@ This file is intentionally test-only. It exercises Revision 3 cases that were
 not explicit in the implementation PR's first acceptance set. No runtime code
 is modified by this review branch.
 """
+# 🧠 BRAIN: Replay, wrong-chain and foreign-session evidence must be rejected
+# 🧠 BRAIN: before an ordered stage or effect can become valid.
+# 🐭 PINKY: An adversary may copy an authentic receipt from another context;
+# 🐭 PINKY: valid authentication alone does not make that binding current.
 from copy import deepcopy
 import json
 from pathlib import Path

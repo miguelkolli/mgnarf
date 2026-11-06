@@ -1,3 +1,7 @@
+# 🧠 BRAIN: The hardened operation boundary is part of the required regression
+# 🧠 BRAIN: route, not an optional green-looking auxiliary test.
+# 🐭 PINKY: A passing suite that silently omits the operation guard would give
+# 🐭 PINKY: false confidence in cross-contract replay protection.
 import json
 import os
 from pathlib import Path

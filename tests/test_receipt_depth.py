@@ -1,3 +1,7 @@
+# 🧠 BRAIN: Receipt loading must reject oversized or pathological nesting
+# 🧠 BRAIN: instead of trusting arbitrary serialized data as evidence.
+# 🐭 PINKY: A signed-looking receipt is not safe if parsing can exhaust
+# 🐭 PINKY: the host or bypass strict evidence validation.
 import json
 import unittest
 

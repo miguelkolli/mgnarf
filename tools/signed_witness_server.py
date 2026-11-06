@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: The witness process is a separate single-use authority, not
+# 🧠 BRAIN: an AI-selected verifier or a substitute for protected effect gating.
+# 🐭 PINKY: Signing a response does not make its ledger rollback-proof;
+# 🐭 PINKY: operators must preserve its storage against the stated threat model.
 """Reference Ed25519-signed append-only witness service for CI fixtures."""
 from __future__ import annotations
 

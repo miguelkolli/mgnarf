@@ -1,4 +1,8 @@
 """Unit boundary tests for PostgreSQL fencing adapters (no live DB required)."""
+# 🧠 BRAIN: These are adapter/configuration unit tests for Layer C fencing,
+# 🧠 BRAIN: not a substitute for a live PostgreSQL commit-boundary check.
+# 🐭 PINKY: Reject invalid roles, tokens, DSNs and timeouts locally;
+# 🐭 PINKY: only the dedicated live workflow can witness DB serialization.
 import unittest
 
 from narf import NARFError, PostgresFenceControlPlane, PostgresFencedTarget, PostgresFencingAuthority

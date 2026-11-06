@@ -1,3 +1,7 @@
+# 🧠 BRAIN: Frozen tasks use strict deterministic JSON, not permissive Python
+# 🧠 BRAIN: coercion that can collide different task representations.
+# 🐭 PINKY: Reject NaN, type confusion and coercion before binding evidence;
+# 🐭 PINKY: a hash is only meaningful when its canonical input is unambiguous.
 from __future__ import annotations
 
 from dataclasses import asdict

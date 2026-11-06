@@ -5,6 +5,10 @@ outside the runtime authority. The application role should have only INSERT and
 SELECT on the ledger table. A privileged administrator is required to create,
 truncate, drop or otherwise rewrite the ledger.
 """
+# 🧠 BRAIN: A PostgreSQL ledger is a consumption authority outside local receipts
+# 🧠 BRAIN: and is only independent when its rollback domain really differs.
+# 🐭 PINKY: Separate credentials or tables in the same database do not create
+# 🐭 PINKY: independent rollback domains for an all-of authority policy.
 from __future__ import annotations
 
 import re
@@ -55,6 +59,8 @@ class PostgresConsumptionAuthority(ConsumptionAuthority):
         self.table = table
         self.connect_timeout_seconds = connect_timeout_seconds
 
+    # 🧠 BRAIN: Rollback domain follows database identity, not table names.
+    # 🐭 PINKY: False independence can silently weaken all-of protection.
     def domain_key(self):
         # Deliberately ignore username, password and table name. Different
         # credentials or tables in the same database are not independent

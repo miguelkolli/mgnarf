@@ -1,3 +1,7 @@
+# 🧠 BRAIN: PostgreSQL consumption authority configuration must not invent
+# 🧠 BRAIN: separate domains based on username or table name.
+# 🐭 PINKY: Two credentials into the same DB are still one rollback domain;
+# 🐭 PINKY: claiming independence there would weaken all-of enforcement.
 import unittest
 
 from narf import AllOfConsumptionAuthority, NARFError, PostgresConsumptionAuthority

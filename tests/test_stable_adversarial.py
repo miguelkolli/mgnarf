@@ -4,6 +4,10 @@ These tests intentionally target the post-hardening merged code path rather than
 RC1/RC2 history. They are self-adversarial evidence, not an independent external
 security review or certification.
 """
+# 🧠 BRAIN: Stable adversarial cases defend the exact frozen acceptance
+# 🧠 BRAIN: contract against tamper, replay and authority mismatches.
+# 🐭 PINKY: A green baseline applies only to the exercised candidate and
+# 🐭 PINKY: threat boundary, not to arbitrary future releases.
 
 import os
 from pathlib import Path

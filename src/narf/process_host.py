@@ -1,4 +1,8 @@
 """Reference boundary for a host-owned NARF gate over a worker-owned candidate file."""
+# 🧠 BRAIN: Untrusted worker-owned candidate files cannot own host receipt keys,
+# 🧠 BRAIN: verifier selection or final effect bytes.
+# 🐭 PINKY: Worker paths can change into symlinks or FIFOs after verification;
+# 🐭 PINKY: freeze and recheck exact bytes, never re-read them for publication.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -56,6 +60,8 @@ class CandidateFileHost:
         self._session = None
         self._target: Path | None = None
 
+    # 🧠 BRAIN: Worker-controlled paths stay untrusted during every re-read.
+    # 🐭 PINKY: Refuse swapped FIFOs, symlinks and non-regular files.
     def _read_candidate(self) -> bytes:
         flags = os.O_RDONLY
         if hasattr(os, "O_NONBLOCK"):

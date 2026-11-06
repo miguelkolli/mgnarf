@@ -1,3 +1,7 @@
+# 🧠 BRAIN: Stable semantic operation IDs prevent replay through newly minted
+# 🧠 BRAIN: contracts for the same real-world action.
+# 🐭 PINKY: Contract UUID uniqueness is not semantic operation uniqueness;
+# 🐭 PINKY: a stale or tampered binding must fail closed.
 import json
 from dataclasses import asdict
 from pathlib import Path

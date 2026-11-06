@@ -1,3 +1,7 @@
+# 🧠 BRAIN: Trusted file effects must bind exact frozen payload bytes
+# 🧠 BRAIN: and preserve exclusive, durable publication semantics.
+# 🐭 PINKY: A failed write or a changed candidate must not expose a partial
+# 🐭 PINKY: file, overwrite an existing target or reuse authority.
 import tempfile
 import unittest
 from pathlib import Path

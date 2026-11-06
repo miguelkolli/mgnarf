@@ -1,3 +1,7 @@
+# 🧠 BRAIN: Frozen verifier requirements are part of the decision contract,
+# 🧠 BRAIN: not a list the worker may edit after execution.
+# 🐭 PINKY: Missing, added or swapped requirement bindings cannot inherit
+# 🐭 PINKY: an unrelated N/N PASS result.
 from dataclasses import asdict
 from pathlib import Path
 import tempfile

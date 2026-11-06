@@ -13,6 +13,10 @@ revision before the same stable operation token may reach the external effect.
 Optional authenticated stage ordering is propagated into the underlying gate;
 the wrapper never strips an ordered contract back to unordered semantics.
 """
+# 🧠 BRAIN: The host-owned semantic operation ID must remain stable across fresh
+# 🧠 BRAIN: contracts so a new contract cannot replay one real-world action.
+# 🐭 PINKY: After an uncertain reservation or callback, do not issue a new ID
+# 🐭 PINKY: to hide ambiguity; fail closed rather than risking duplicate effects.
 from __future__ import annotations
 
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -271,5 +275,7 @@ class OperationBoundEffectExecutor:
 
         # The stable operation identity, not the fresh contract UUID, is the
         # external single-use token. Never release an uncertain reservation.
+        # 🧠 BRAIN: Consume the stable operation, never a disposable contract ID.
+        # 🐭 PINKY: A failed callback is not permission to retry that effect.
         self.authority.reserve(session.operation_id)
         return session._execute_effect_via_executor()

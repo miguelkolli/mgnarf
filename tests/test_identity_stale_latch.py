@@ -1,4 +1,8 @@
 """Regression tests for observed identity/profile drift invalidating old authorization."""
+# 🧠 BRAIN: Observed identity/profile drift invalidates the old authorization
+# 🧠 BRAIN: even if an actor later returns to its earlier attributes.
+# 🐭 PINKY: Do not clear a stale latch just because a snapshot matches again;
+# 🐭 PINKY: fresh verification requires a new session.
 
 from copy import deepcopy
 from pathlib import Path

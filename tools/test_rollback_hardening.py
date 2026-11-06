@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: Hardened replay tests exercise separate consumption authorities
+# 🧠 BRAIN: and their behavior when one history is restored.
+# 🐭 PINKY: If every preserving domain rewinds together, replay remains a
+# 🐭 PINKY: documented limitation, never a security PASS.
 """Verify rollback hardening with a consumption authority outside receipt rollback."""
 from __future__ import annotations
 

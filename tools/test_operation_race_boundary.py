@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: Concurrent actors must produce at most one accepted operation
+# 🧠 BRAIN: and one effect under the external consumption authority.
+# 🐭 PINKY: A green single-process unit test cannot prove multi-process
+# 🐭 PINKY: races are safe; this harness probes the contested boundary.
 """Cross-process operation-id race plus database/local rollback boundary."""
 from __future__ import annotations
 

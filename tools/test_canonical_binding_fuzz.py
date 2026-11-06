@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# 🧠 BRAIN: Fuzz the task/contract canonical bindings so different values
+# 🧠 BRAIN: cannot accidentally share accepted evidence.
+# 🐭 PINKY: Coercion, serialization and hostile container shapes may appear
+# 🐭 PINKY: equivalent unless strict normalization is enforced.
 """Deterministic canonical JSON and authenticated-receipt fuzz boundary."""
 from __future__ import annotations
 

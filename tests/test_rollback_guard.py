@@ -1,3 +1,7 @@
+# 🧠 BRAIN: External consumption is required when local receipt history
+# 🧠 BRAIN: may be restored or overwritten by a privileged actor.
+# 🐭 PINKY: A failed or ambiguous effect must not delete its reservation
+# 🐭 PINKY: and allow the same protected action to replay.
 import tempfile
 from pathlib import Path
 import unittest

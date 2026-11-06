@@ -6,6 +6,10 @@ rollback domain. A multi-domain authority can require every independent domain
 to reserve the same token before NARF is allowed to enter the external effect
 callback.
 """
+# 🧠 BRAIN: Local receipt rollback must not permit a second real-world effect;
+# 🧠 BRAIN: reserve a token in an external domain before effect execution.
+# 🐭 PINKY: Treat uncertain reservations as consumed even if the callback fails;
+# 🐭 PINKY: availability loss is safer than replay after an ambiguous failure.
 from __future__ import annotations
 
 import os
@@ -184,5 +188,7 @@ class RollbackProtectedEffectExecutor:
         # Reserve outside the receipt rollback domain before session.execute_effect().
         # If the following local receipt persistence or callback fails, the token
         # remains consumed: fail closed and sacrifice availability rather than replay.
+        # 🧠 BRAIN: External consumption must precede the local effect.
+        # 🐭 PINKY: Do not free the token when the downstream result is unclear.
         self.authority.reserve(contract_id)
         return session.execute_effect()

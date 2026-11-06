@@ -1,4 +1,8 @@
 """Composition tests for ordered evidence through hardened host wrappers."""
+# 🧠 BRAIN: The exact v3 stage order must survive authority, operation and
+# 🧠 BRAIN: fenced wrapper composition end to end.
+# 🐭 PINKY: If a wrapper silently rebuilds an unordered contract, the system
+# 🐭 PINKY: could report PASS without required causal evidence.
 
 from copy import deepcopy
 import json
