@@ -79,6 +79,53 @@ TRUSTED EFFECT SIDE
 
 The candidate may propose the action. It must not own the final authority that performs the action.
 
+### Placement alongside MGSystem or another governance/verification system
+
+An upstream governance system such as MGSystem can already own intent,
+repository truth, scope, candidate freeze, tests and evidence. **Do not run
+a second full build/test/review pipeline merely because MGnarf is added.**
+MGnarf is the independent effect-admission boundary, not another coding
+agent and not a replacement for that upstream governance.
+
+The trusted host classifies each requested task/action BEFORE it grants
+any protected effect authority:
+
+| Class | Examples | Correct placement |
+| --- | --- | --- |
+| Read-only | inspect, RECON, plan, ordinary non-mutating tests | upstream governance only; no MGnarf effect session |
+| Candidate-only | isolated worktree or an authorized unprotected non-deploying draft PR | upstream scope and verification; no privileged effect |
+| Protected effect | protected branch merge/push, production deploy, prod DB write, credentials/rules change, irreversible external action | exact candidate and policy → authenticate required verifiers → MGnarf revalidation/admission → host-owned effect |
+
+A draft branch that *automatically deploys*, writes protected data or triggers
+another privileged consequence is **not** candidate-only. Protection depends
+on real effect paths and credentials, not what an agent calls a branch.
+
+For a NEW protected task, the host may discover the latest published stable,
+immutable MGnarf GitHub release, verify its exact source commit, and freeze
+that release identity with the task. A changing \`main\` ref is not a stable
+release; an update to a frozen task is not an automatic in-place upgrade.
+The release selection policy is host-owned, not agent-selected.
+
+If the upstream system already authenticated candidate-bound test evidence,
+a host adapter may verify and reuse that evidence ONLY if the exact candidate,
+verifier identity/version, requirements, policy and freshness still satisfy
+the frozen MGnarf contract. Merely copying a CI PASS string is not reuse.
+Any missing/mismatched requirement must be verified by an authorized trusted
+producer. The final MGnarf decision and immediate pre-effect authority/
+revocation check are never elided.
+
+**Critical non-claim:** An internal component also named NARF, an upstream
+Task Freeze, or a green GitHub Action does not establish that the standalone
+public MGnarf gate protected the actual deployment. The trusted host must
+retain exclusive effect credentials, remove direct worker bypasses, enforce
+required serialization/fencing and demonstrate that bypass attempts fail.
+Unavailable gate/host means the **protected effect** fails closed; unrelated
+read-only and candidate tasks do not needlessly stop.
+
+This pattern does not require public disclosure of any private governance
+repository, its internals, tokens, production host architecture or approval
+secrets. The integration contract is at the trusted-host/effect boundary.
+
 ## 4. Minimal host flow
 
 The current public API follows this sequence:
